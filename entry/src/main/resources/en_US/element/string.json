@@ -1,0 +1,28 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "Vaelis entry module"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "Vaelis agenda + reminders"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "Vaelis"
+    },
+    {
+      "name": "perm_internet_reason",
+      "value": "Pull today's and tomorrow's agenda from the desktop Vaelis."
+    },
+    {
+      "name": "perm_reminder_reason",
+      "value": "Schedule a local reminder 15 minutes before each class/meeting."
+    },
+    {
+      "name": "perm_notification_reason",
+      "value": "Show class/meeting reminders and pending agenda notifications."
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+node_modules/
+oh_modules/
+build/
+.hvigor/
+.idea/
+*.log
+.DS_Store
+*.har
+resources/base/media/app_icon.png

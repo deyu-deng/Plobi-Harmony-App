@@ -1,0 +1,405 @@
+import { AgendaEvent } from '../model/AgendaEvent';
+import { EventCard } from '../components/EventCard';
+import { fetchAgenda, fetchPending, postDecide, ApiResult, DecideResponse } from '../service/AgendaApi';
+import { getStringSync, putString, putNumber } from '../service/Cache';
+import {
+  PREF_KEY_BASE_URL,
+  PREF_KEY_CACHED_EVENTS,
+  PREF_KEY_CACHED_PENDING,
+  PREF_KEY_LAST_SYNC,
+  PREF_KEY_TOKEN,
+} from '../model/AppConfig';
+import { ensureNotificationEnabled, rescheduleReminders, ScheduledReminder } from '../service/ReminderService';
+
+@Entry
+@Component
+struct Index {
+  @State todayEvents: AgendaEvent[] = [];
+  @State tomorrowEvents: AgendaEvent[] = [];
+  @State pendingEvents: AgendaEvent[] = [];
+  @State lastSyncText: string = '从未同步';
+  @State reminderNotice: string = '';
+  @State permissionWarning: string = '';
+  @State isRefreshing: boolean = false;
+  @State topError: string = '';
+
+  private scheduledReminders: ScheduledReminder[] = [];
+
+  aboutToAppear(): void {
+    this.loadFromCache();
+  }
+
+  private loadFromCache(): void {
+    const eventsJson: string | undefined = getStringSync(PREF_KEY_CACHED_EVENTS);
+    if (eventsJson !== undefined) {
+      const parsed: ParsedEvents = parseEventsJson(eventsJson);
+      this.todayEvents = parsed.today;
+      this.tomorrowEvents = parsed.tomorrow;
+    }
+    const pendingJson: string | undefined = getStringSync(PREF_KEY_CACHED_PENDING);
+    if (pendingJson !== undefined) {
+      this.pendingEvents = parsePendingJson(pendingJson);
+    }
+    const last: string | undefined = getStringSync(PREF_KEY_LAST_SYNC);
+    if (last !== undefined) {
+      this.lastSyncText = '上次同步 ' + last;
+    }
+  }
+
+  build(): void {
+    Column() {
+      this.headerBar();
+      this.errorBanner();
+      this.bodyScroll();
+      this.footerBar();
+    }
+    .width('100%')
+    .height('100%')
+    .backgroundColor($r('sys.color.ohos_id_color_sub_background'));
+  }
+
+  @Builder
+  headerBar(): void {
+    Row() {
+      Text('Vaelis')
+        .fontSize(20)
+        .fontWeight(FontWeight.Bold);
+      Blank();
+      Button('刷新')
+        .type(ButtonType.Capsule)
+        .height(32)
+        .padding({ left: 14, right: 14 })
+        .enabled(!this.isRefreshing)
+        .onClick((): void => {
+          void this.refresh();
+        });
+      Button('设置')
+        .type(ButtonType.Capsule)
+        .height(32)
+        .padding({ left: 14, right: 14 })
+        .margin({ left: 8 })
+        .onClick((): void => {
+          this.getUIContext().getRouter().pushUrl({ url: 'pages/SettingsPage' });
+        });
+    }
+    .width('100%')
+    .padding({ left: 16, right: 16, top: 12, bottom: 12 })
+    .backgroundColor($r('sys.color.ohos_id_color_background'));
+  }
+
+  @Builder
+  errorBanner(): void {
+    if (this.topError.length > 0) {
+      Row() {
+        Text(this.topError)
+          .fontSize(13)
+          .fontColor('#FFFFFF')
+          .layoutWeight(1);
+      }
+      .width('100%')
+      .padding({ left: 16, right: 16, top: 8, bottom: 8 })
+      .backgroundColor('#A33A2A');
+    }
+  }
+
+  @Builder
+  bodyScroll(): void {
+    Scroll() {
+      Column() {
+        this.sectionTitle('今日');
+        if (this.todayEvents.length === 0) {
+          this.emptyHint('今日没有已确认的安排');
+        } else {
+          ForEach(this.todayEvents, (item: AgendaEvent): void => {
+            this.eventRow(item);
+          }, (item: AgendaEvent): string => item.id);
+        }
+
+        this.sectionTitle('明日');
+        if (this.tomorrowEvents.length === 0) {
+          this.emptyHint('明日没有已确认的安排');
+        } else {
+          ForEach(this.tomorrowEvents, (item: AgendaEvent): void => {
+            this.eventRow(item);
+          }, (item: AgendaEvent): string => 'tomorrow-' + item.id);
+        }
+
+        this.sectionTitle('待确认');
+        if (this.pendingEvents.length === 0) {
+          this.emptyHint('没有待确认的条目');
+        } else {
+          ForEach(this.pendingEvents, (item: AgendaEvent): void => {
+            EventCard({
+              event: item,
+              confirmAction: (): void => { void this.decide(item, 'confirm'); },
+              dismissAction: (): void => { void this.decide(item, 'dismiss'); },
+            });
+          }, (item: AgendaEvent): string => 'pending-' + item.id);
+        }
+
+        Column().height(24);
+      }
+      .width('100%')
+      .padding({ left: 16, right: 16, top: 8, bottom: 8 });
+    }
+    .layoutWeight(1)
+    .width('100%');
+  }
+
+  @Builder
+  sectionTitle(label: string): void {
+    Text(label)
+      .fontSize(14)
+      .fontWeight(FontWeight.Medium)
+      .fontColor($r('sys.color.ohos_id_color_text_secondary'))
+      .width('100%')
+      .margin({ top: 16, bottom: 8 });
+  }
+
+  @Builder
+  emptyHint(text: string): void {
+    Text(text)
+      .fontSize(13)
+      .fontColor($r('sys.color.ohos_id_color_text_tertiary'))
+      .width('100%')
+      .padding(12)
+      .borderRadius(8)
+      .backgroundColor($r('sys.color.ohos_id_color_card_background'))
+      .margin({ bottom: 8 });
+  }
+
+  @Builder
+  eventRow(event: AgendaEvent): void {
+    Row() {
+      Column() {
+        Text(event.title)
+          .fontSize(15)
+          .fontWeight(FontWeight.Medium)
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis });
+        Text(formatLine(event.start_at, event.end_at))
+          .fontSize(13)
+          .fontColor($r('sys.color.ohos_id_color_text_secondary'))
+          .margin({ top: 4 });
+      }
+      .layoutWeight(1)
+      .alignItems(HorizontalAlign.Start);
+
+      Text(event.kind)
+        .fontSize(11)
+        .fontColor($r('sys.color.ohos_id_color_text_tertiary'))
+        .padding({ left: 8, right: 8, top: 2, bottom: 2 })
+        .borderRadius(10)
+        .backgroundColor($r('sys.color.ohos_id_color_sub_background'));
+    }
+    .width('100%')
+    .padding(12)
+    .borderRadius(8)
+    .backgroundColor($r('sys.color.ohos_id_color_card_background'))
+    .margin({ bottom: 8 });
+  }
+
+  @Builder
+  footerBar(): void {
+    Column() {
+      if (this.reminderNotice.length > 0) {
+        Text(this.reminderNotice)
+          .fontSize(12)
+          .fontColor('#7A5A18')
+          .width('100%');
+      }
+      if (this.permissionWarning.length > 0) {
+        Text(this.permissionWarning)
+          .fontSize(12)
+          .fontColor('#7A5A18')
+          .width('100%')
+          .margin({ top: 4 });
+      }
+      Text(this.lastSyncText)
+        .fontSize(12)
+        .fontColor($r('sys.color.ohos_id_color_text_tertiary'))
+        .margin({ top: 4 });
+    }
+    .width('100%')
+    .padding({ left: 16, right: 16, top: 8, bottom: 12 })
+    .alignItems(HorizontalAlign.Start)
+    .backgroundColor($r('sys.color.ohos_id_color_background'));
+  }
+
+  private async refresh(): Promise<void> {
+    if (this.isRefreshing) {
+      return;
+    }
+    this.isRefreshing = true;
+    this.topError = '';
+    const baseUrl: string | undefined = getStringSync(PREF_KEY_BASE_URL);
+    const token: string | undefined = getStringSync(PREF_KEY_TOKEN);
+    if (baseUrl === undefined || token === undefined || baseUrl.length === 0 || token.length === 0) {
+      this.topError = '请先在「设置」里填桌面地址和令牌';
+      this.isRefreshing = false;
+      return;
+    }
+    const today: string = isoDay(0);
+    const tomorrow: string = isoDay(1);
+    const eventsRes: ApiResult<AgendaEvent[]> = await fetchAgenda(baseUrl, token, today, tomorrow);
+    if (!eventsRes.ok) {
+      this.topError = '拉取清单失败：' + (eventsRes.reason ?? '');
+      this.isRefreshing = false;
+      return;
+    }
+    const pendingRes: ApiResult<AgendaEvent[]> = await fetchPending(baseUrl, token);
+    if (!pendingRes.ok) {
+      this.topError = '拉取待确认失败：' + (pendingRes.reason ?? '');
+      this.isRefreshing = false;
+      return;
+    }
+    const all: AgendaEvent[] = eventsRes.data ?? [];
+    const todayList: AgendaEvent[] = filterByDate(all, today);
+    const tomorrowList: AgendaEvent[] = filterByDate(all, tomorrow);
+    this.todayEvents = todayList;
+    this.tomorrowEvents = tomorrowList;
+    this.pendingEvents = pendingRes.data ?? [];
+    const now: string = formatNow();
+    this.lastSyncText = '上次同步 ' + now;
+    await putString(PREF_KEY_CACHED_EVENTS, JSON.stringify(all));
+    await putString(PREF_KEY_CACHED_PENDING, JSON.stringify(this.pendingEvents));
+    await putString(PREF_KEY_LAST_SYNC, now);
+    await putNumber('vaelis.apiVersion', eventsRes.apiVersion ?? 0);
+    this.isRefreshing = false;
+    void this.reschedule(todayList.concat(tomorrowList));
+    void this.checkNotificationPermission();
+  }
+
+  private async decide(item: AgendaEvent, action: 'confirm' | 'dismiss'): Promise<void> {
+    const baseUrl: string | undefined = getStringSync(PREF_KEY_BASE_URL);
+    const token: string | undefined = getStringSync(PREF_KEY_TOKEN);
+    if (baseUrl === undefined || token === undefined) {
+      this.topError = '请先在「设置」里配对';
+      return;
+    }
+    const res: ApiResult<DecideResponse> = await postDecide(baseUrl, token, item.id, action);
+    if (!res.ok) {
+      this.topError = '电脑上的 Vaelis 没开或调用失败：' + (res.reason ?? '');
+      return;
+    }
+    this.topError = '';
+    this.pendingEvents = this.pendingEvents.filter((e: AgendaEvent): boolean => e.id !== item.id);
+    await putString(PREF_KEY_CACHED_PENDING, JSON.stringify(this.pendingEvents));
+  }
+
+  private async reschedule(all: AgendaEvent[]): Promise<void> {
+    const granted: boolean = await ensureNotificationEnabled();
+    if (!granted) {
+      this.permissionWarning = '课前提醒需要通知权限';
+      return;
+    }
+    this.permissionWarning = '';
+    const outcome = await rescheduleReminders(all, this.scheduledReminders, Math.floor(Date.now() / 1000));
+    this.scheduledReminders = outcome.scheduled;
+    if (outcome.truncated && outcome.reason !== undefined) {
+      this.reminderNotice = outcome.reason;
+    } else {
+      this.reminderNotice = '';
+    }
+  }
+
+  private async checkNotificationPermission(): Promise<void> {
+    const granted: boolean = await ensureNotificationEnabled();
+    if (!granted) {
+      this.permissionWarning = '课前提醒需要通知权限';
+    }
+  }
+}
+
+interface ParsedEvents {
+  today: AgendaEvent[];
+  tomorrow: AgendaEvent[];
+}
+
+function parseEventsJson(raw: string): ParsedEvents {
+  try {
+    const obj: Object = JSON.parse(raw) as Object;
+    if (!Array.isArray(obj)) {
+      return { today: [], tomorrow: [] };
+    }
+    const arr: Object[] = obj as Object[];
+    const today: string = isoDay(0);
+    const tomorrow: string = isoDay(1);
+    const todayList: AgendaEvent[] = [];
+    const tomorrowList: AgendaEvent[] = [];
+    for (let i: number = 0; i < arr.length; i++) {
+      const e: AgendaEvent = arr[i] as AgendaEvent;
+      const d: string = e.start_at.slice(0, 10);
+      if (d === today) {
+        todayList.push(e);
+      } else if (d === tomorrow) {
+        tomorrowList.push(e);
+      }
+    }
+    return { today: todayList, tomorrow: tomorrowList };
+  } catch (e) {
+    return { today: [], tomorrow: [] };
+  }
+}
+
+function parsePendingJson(raw: string): AgendaEvent[] {
+  try {
+    const obj: Object = JSON.parse(raw) as Object;
+    if (!Array.isArray(obj)) {
+      return [];
+    }
+    return obj as AgendaEvent[];
+  } catch (e) {
+    return [];
+  }
+}
+
+function filterByDate(events: ReadonlyArray<AgendaEvent>, dayIso: string): AgendaEvent[] {
+  const out: AgendaEvent[] = [];
+  for (let i: number = 0; i < events.length; i++) {
+    const e: AgendaEvent = events[i];
+    if (e.start_at.slice(0, 10) === dayIso) {
+      out.push(e);
+    }
+  }
+  out.sort((a: AgendaEvent, b: AgendaEvent): number => {
+    return a.start_at.localeCompare(b.start_at);
+  });
+  return out;
+}
+
+function formatLine(startIso: string, endIso?: string): string {
+  const start: string = hhmm(startIso);
+  if (endIso !== undefined && endIso.length > 0) {
+    return start + '–' + hhmm(endIso);
+  }
+  return start + ' · 未写结束';
+}
+
+function hhmm(iso: string): string {
+  const d: Date = new Date(iso);
+  if (isNaN(d.getTime())) {
+    return '--:--';
+  }
+  const pad: (n: number) => string = (n: number): string => {
+    return n < 10 ? '0' + n.toString() : n.toString();
+  };
+  return pad(d.getHours()) + ':' + pad(d.getMinutes());
+}
+
+function isoDay(offsetDays: number): string {
+  const d: Date = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  const pad: (n: number) => string = (n: number): string => {
+    return n < 10 ? '0' + n.toString() : n.toString();
+  };
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+}
+
+function formatNow(): string {
+  const d: Date = new Date();
+  const pad: (n: number) => string = (n: number): string => {
+    return n < 10 ? '0' + n.toString() : n.toString();
+  };
+  return pad(d.getHours()) + ':' + pad(d.getMinutes());
+}

@@ -1,0 +1,10 @@
+{
+  "name": "vaelis-harmony-app",
+  "version": "0.1.0",
+  "description": "Vaelis HarmonyOS NEXT App (WP-H2-APP-V0)",
+  "private": true,
+  "scripts": {
+    "build": "hvigorw assembleHap",
+    "clean": "hvigorw clean"
+  }
+}

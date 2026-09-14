@@ -1,0 +1,28 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "Vaelis entry module"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "Vaelis agenda + reminders"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "Vaelis"
+    },
+    {
+      "name": "perm_internet_reason",
+      "value": "拉取桌面 Vaelis 的今日/明日日程"
+    },
+    {
+      "name": "perm_reminder_reason",
+      "value": "在课前 15 分钟发出系统提醒"
+    },
+    {
+      "name": "perm_notification_reason",
+      "value": "显示课前提醒与待确认通知"
+    }
+  ]
+}

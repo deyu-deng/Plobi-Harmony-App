@@ -1,0 +1,12 @@
+{
+  "files": ["**/*.ets", "**/*.ts"],
+  "ignore": [
+    "node_modules/**",
+    "oh_modules/**",
+    "build/**",
+    ".hvigor/**",
+    "entry/src/mock/**"
+  ],
+  "ruleSet": ["plugin:@performance-analysis/recommended"],
+  "rules": {}
+}
