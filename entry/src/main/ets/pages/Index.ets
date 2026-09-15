@@ -1,16 +1,19 @@
-import { AgendaEvent } from '../model/AgendaEvent';
+import { AgendaEvent, Anchor, PlanItem, ConflictPair, DayPayload } from '../model/AgendaEvent';
 import { EventCard } from '../components/EventCard';
-import { fetchAgenda, fetchPending, postDecide, ApiResult, DecideResponse } from '../service/AgendaApi';
+import { fetchAgenda, fetchPending, fetchDay, postDecide, ApiResult, DecideResponse } from '../service/AgendaApi';
 import { ApiFailure } from '../service/ApiError';
 import { getStringSync, putString, putNumber } from '../service/Cache';
 import {
   PREF_KEY_BASE_URL,
   PREF_KEY_CACHED_EVENTS,
   PREF_KEY_CACHED_PENDING,
+  PREF_KEY_CACHED_DAY,
   PREF_KEY_LAST_SYNC,
   PREF_KEY_TOKEN,
 } from '../model/AppConfig';
 import { ensureNotificationEnabled, rescheduleReminders, ScheduledReminder } from '../service/ReminderService';
+import { todayLocalIso, localDateOfIso } from '../utils/LocalDate';
+import { parseDayPayload } from '../service/DayParser';
 
 @Entry
 @Component
@@ -18,6 +21,10 @@ struct Index {
   @State todayEvents: AgendaEvent[] = [];
   @State tomorrowEvents: AgendaEvent[] = [];
   @State pendingEvents: AgendaEvent[] = [];
+  @State anchors: Anchor[] = [];
+  @State planItems: PlanItem[] = [];
+  @State conflicts: ConflictPair[] = [];
+  @State anchorNotice: string = '';
   @State lastSyncText: string = '从未同步';
   @State reminderNotice: string = '';
   @State permissionWarning: string = '';
@@ -44,10 +51,21 @@ struct Index {
     if (pendingJson !== undefined) {
       this.pendingEvents = parsePendingJson(pendingJson);
     }
+    const dayJson: string | undefined = getStringSync(PREF_KEY_CACHED_DAY);
+    if (dayJson !== undefined) {
+      const day: DayPayload = parseDayPayload(dayJson);
+      this.applyDayPayload(day);
+    }
     const last: string | undefined = getStringSync(PREF_KEY_LAST_SYNC);
     if (last !== undefined) {
       this.lastSyncText = '上次同步 ' + last;
     }
+  }
+
+  private applyDayPayload(day: DayPayload): void {
+    this.anchors = day.anchors;
+    this.planItems = day.plan_items;
+    this.conflicts = day.conflicts;
   }
 
   build(): void {
@@ -152,13 +170,33 @@ struct Index {
   bodyScroll(): void {
     Scroll() {
       Column() {
+        if (this.conflicts.length > 0) {
+          this.conflictChip();
+        }
+        if (this.anchors.length > 0) {
+          this.sectionTitle('今日 · 作息');
+          ForEach(this.anchors, (item: Anchor): void => {
+            this.anchorRow(item);
+          }, (item: Anchor): string => item.id);
+        } else if (this.anchorNotice.length > 0) {
+          this.sectionTitle('今日 · 作息');
+          this.emptyHint(this.anchorNotice);
+        }
+
         this.sectionTitle('今日');
         if (this.todayEvents.length === 0) {
           this.emptyHint('今日没有已确认的安排');
         } else {
           ForEach(this.todayEvents, (item: AgendaEvent): void => {
-            this.eventRow(item);
+            this.eventRow(item.id, item.title, item.start_at, item.end_at, item.kind);
           }, (item: AgendaEvent): string => item.id);
+        }
+
+        if (this.planItems.length > 0) {
+          this.sectionTitle('今日 · 计划项');
+          ForEach(this.planItems, (item: PlanItem): void => {
+            this.eventRow(item.id, item.title, item.start_at, item.end_at, item.kind);
+          }, (item: PlanItem): string => 'plan-' + item.id);
         }
 
         this.sectionTitle('明日');
@@ -166,7 +204,7 @@ struct Index {
           this.emptyHint('明日没有已确认的安排');
         } else {
           ForEach(this.tomorrowEvents, (item: AgendaEvent): void => {
-            this.eventRow(item);
+            this.eventRow(item.id, item.title, item.start_at, item.end_at, item.kind);
           }, (item: AgendaEvent): string => 'tomorrow-' + item.id);
         }
 
@@ -193,6 +231,50 @@ struct Index {
   }
 
   @Builder
+  conflictChip(): void {
+    Row() {
+      Text('今日有 ' + String(this.conflicts.length) + ' 段时间冲突，详见桌面')
+        .fontSize(12)
+        .fontColor('#7A5A18')
+        .layoutWeight(1);
+    }
+    .width('100%')
+    .padding(10)
+    .borderRadius(8)
+    .backgroundColor('#FBEFD0')
+    .margin({ top: 8, bottom: 4 });
+  }
+
+  @Builder
+  anchorRow(anchor: Anchor): void {
+    Row() {
+      Column() {
+        Text(anchor.title)
+          .fontSize(15)
+          .fontWeight(FontWeight.Medium);
+        Text(formatAnchorLine(anchor))
+          .fontSize(13)
+          .fontColor($r('sys.color.ohos_id_color_text_secondary'))
+          .margin({ top: 4 });
+      }
+      .layoutWeight(1)
+      .alignItems(HorizontalAlign.Start);
+
+      Text(anchor.flex ? '挪过位' : anchor.template_id)
+        .fontSize(11)
+        .fontColor($r('sys.color.ohos_id_color_text_tertiary'))
+        .padding({ left: 8, right: 8, top: 2, bottom: 2 })
+        .borderRadius(10)
+        .backgroundColor($r('sys.color.ohos_id_color_sub_background'));
+    }
+    .width('100%')
+    .padding(12)
+    .borderRadius(8)
+    .backgroundColor($r('sys.color.ohos_id_color_card_background'))
+    .margin({ bottom: 8 });
+  }
+
+  @Builder
   sectionTitle(label: string): void {
     Text(label)
       .fontSize(14)
@@ -215,15 +297,15 @@ struct Index {
   }
 
   @Builder
-  eventRow(event: AgendaEvent): void {
+  eventRow(id: string, title: string, startAt: string, endAt: string | undefined, kind: string): void {
     Row() {
       Column() {
-        Text(event.title)
+        Text(title)
           .fontSize(15)
           .fontWeight(FontWeight.Medium)
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis });
-        Text(formatLine(event.start_at, event.end_at))
+        Text(formatLine(startAt, endAt))
           .fontSize(13)
           .fontColor($r('sys.color.ohos_id_color_text_secondary'))
           .margin({ top: 4 });
@@ -231,7 +313,7 @@ struct Index {
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start);
 
-      Text(event.kind)
+      Text(kind)
         .fontSize(11)
         .fontColor($r('sys.color.ohos_id_color_text_tertiary'))
         .padding({ left: 8, right: 8, top: 2, bottom: 2 })
@@ -281,6 +363,7 @@ struct Index {
     this.topHint = '';
     this.versionNotice = '';
     this.versionHint = '';
+    this.anchorNotice = '';
     const baseUrl: string | undefined = getStringSync(PREF_KEY_BASE_URL);
     const token: string | undefined = getStringSync(PREF_KEY_TOKEN);
     if (baseUrl === undefined || token === undefined || baseUrl.length === 0 || token.length === 0) {
@@ -288,15 +371,19 @@ struct Index {
       this.isRefreshing = false;
       return;
     }
-    const today: string = isoDay(0);
-    const tomorrow: string = isoDay(1);
-    const eventsRes: ApiResult<AgendaEvent[]> = await fetchAgenda(baseUrl, token, today, tomorrow);
+    const today: string = todayLocalIso();
+    const tomorrow: string = tomorrowLocalIso();
+    const eventsPromise: Promise<ApiResult<AgendaEvent[]>> = fetchAgenda(baseUrl, token, today, tomorrow);
+    const pendingPromise: Promise<ApiResult<AgendaEvent[]>> = fetchPending(baseUrl, token);
+    const dayPromise: Promise<ApiResult<DayPayload>> = fetchDay(baseUrl, token, today);
+    const eventsRes: ApiResult<AgendaEvent[]> = await eventsPromise;
+    const pendingRes: ApiResult<AgendaEvent[]> = await pendingPromise;
+    const dayRes: ApiResult<DayPayload> = await dayPromise;
     if (!eventsRes.ok) {
       this.applyApiFailure('拉取清单', eventsRes);
       this.isRefreshing = false;
       return;
     }
-    const pendingRes: ApiResult<AgendaEvent[]> = await fetchPending(baseUrl, token);
     if (!pendingRes.ok) {
       this.applyApiFailure('拉取待确认', pendingRes);
       this.isRefreshing = false;
@@ -308,6 +395,20 @@ struct Index {
     this.todayEvents = todayList;
     this.tomorrowEvents = tomorrowList;
     this.pendingEvents = pendingRes.data ?? [];
+    if (dayRes.ok && dayRes.data !== undefined) {
+      this.applyDayPayload(dayRes.data);
+      await putString(PREF_KEY_CACHED_DAY, JSON.stringify(dayRes.data));
+    } else {
+      this.anchors = [];
+      this.planItems = [];
+      this.conflicts = [];
+      if (dayRes.failure !== undefined) {
+        this.anchorNotice = '作息暂未同步：' + dayRes.failure.short;
+      } else {
+        this.anchorNotice = '作息暂未同步';
+      }
+      await putString(PREF_KEY_CACHED_DAY, '');
+    }
     const now: string = formatNow();
     this.lastSyncText = '上次同步 ' + now;
     await putString(PREF_KEY_CACHED_EVENTS, JSON.stringify(all));
@@ -455,7 +556,11 @@ function isoDay(offsetDays: number): string {
   const pad: (n: number) => string = (n: number): string => {
     return n < 10 ? '0' + n.toString() : n.toString();
   };
-  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  return pad(d.getFullYear()) + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+}
+
+function tomorrowLocalIso(): string {
+  return isoDay(1);
 }
 
 function formatNow(): string {
@@ -464,4 +569,10 @@ function formatNow(): string {
     return n < 10 ? '0' + n.toString() : n.toString();
   };
   return pad(d.getHours()) + ':' + pad(d.getMinutes());
+}
+
+function formatAnchorLine(anchor: Anchor): string {
+  const start: string = hhmm(anchor.start_at);
+  const end: string = hhmm(anchor.end_at);
+  return start + '–' + end;
 }

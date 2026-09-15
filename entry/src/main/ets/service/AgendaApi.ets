@@ -1,6 +1,6 @@
 import { http } from '@kit.NetworkKit';
 import { BusinessError } from '@kit.BasicServicesKit';
-import { AgendaEvent } from '../model/AgendaEvent';
+import { AgendaEvent, DayPayload } from '../model/AgendaEvent';
 import { DEFAULT_API_VERSION } from '../model/AppConfig';
 import { ApiFailure, classifyConnectFailure, classifyHttpFailure, classifyVersion, serverMajorVersion } from './ApiError';
 
@@ -196,6 +196,17 @@ export function fetchPending(
   token: string,
 ): Promise<ApiResult<AgendaEvent[]>> {
   return doRequest<AgendaEvent[]>(baseUrl, token, http.RequestMethod.GET, '/api/agenda/pending', undefined);
+}
+
+export function fetchDay(
+  baseUrl: string,
+  token: string,
+  localDate: string,
+): Promise<ApiResult<DayPayload>> {
+  const q: Record<string, string> = {
+    'date': localDate,
+  };
+  return doRequest<DayPayload>(baseUrl, token, http.RequestMethod.GET, '/api/agenda/day', q);
 }
 
 export function postDecide(
