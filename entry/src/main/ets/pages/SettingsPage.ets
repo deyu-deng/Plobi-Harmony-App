@@ -2,6 +2,7 @@ import { getStringSync, putString } from '../service/Cache';
 import { PREF_KEY_BASE_URL, PREF_KEY_TOKEN } from '../model/AppConfig';
 import { fetchAgenda, ApiResult } from '../service/AgendaApi';
 import { AgendaEvent } from '../model/AgendaEvent';
+import { ApiFailure } from '../service/ApiError';
 
 @Entry
 @Component
@@ -165,9 +166,14 @@ struct SettingsPage {
     }
     const res: ApiResult<AgendaEvent[]> = await fetchAgenda(url, tok, '2999-01-01', '2999-01-02');
     if (res.ok) {
-      this.testHint = '连接 OK（status=' + String(res.status) + '）';
-    } else {
-      this.testHint = '连接失败：' + (res.reason ?? '') + '（status=' + String(res.status) + '）';
+      this.testHint = '连接 OK · status=' + String(res.status);
+      return;
     }
+    if (res.failure !== undefined) {
+      const f: ApiFailure = res.failure;
+      this.testHint = f.short + ' · ' + f.hint;
+      return;
+    }
+    this.testHint = '连接失败 · HTTP ' + String(res.status);
   }
 }

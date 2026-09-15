@@ -1,6 +1,7 @@
 import { AgendaEvent } from '../model/AgendaEvent';
 import { EventCard } from '../components/EventCard';
 import { fetchAgenda, fetchPending, postDecide, ApiResult, DecideResponse } from '../service/AgendaApi';
+import { ApiFailure } from '../service/ApiError';
 import { getStringSync, putString, putNumber } from '../service/Cache';
 import {
   PREF_KEY_BASE_URL,
@@ -22,6 +23,9 @@ struct Index {
   @State permissionWarning: string = '';
   @State isRefreshing: boolean = false;
   @State topError: string = '';
+  @State topHint: string = '';
+  @State versionNotice: string = '';
+  @State versionHint: string = '';
 
   private scheduledReminders: ScheduledReminder[] = [];
 
@@ -49,6 +53,7 @@ struct Index {
   build(): void {
     Column() {
       this.headerBar();
+      this.versionBanner();
       this.errorBanner();
       this.bodyScroll();
       this.footerBar();
@@ -90,15 +95,56 @@ struct Index {
   @Builder
   errorBanner(): void {
     if (this.topError.length > 0) {
-      Row() {
-        Text(this.topError)
-          .fontSize(13)
-          .fontColor('#FFFFFF')
-          .layoutWeight(1);
+      Column() {
+        Row() {
+          Text(this.topError)
+            .fontSize(13)
+            .fontColor('#FFFFFF')
+            .layoutWeight(1);
+        }
+        .width('100%')
+        .padding({ left: 16, right: 16, top: 8, bottom: 4 });
+        if (this.topHint.length > 0) {
+          Row() {
+            Text(this.topHint)
+              .fontSize(12)
+              .fontColor('#FFFFFF')
+              .layoutWeight(1);
+          }
+          .width('100%')
+          .padding({ left: 16, right: 16, top: 0, bottom: 8 });
+        }
       }
       .width('100%')
-      .padding({ left: 16, right: 16, top: 8, bottom: 8 })
       .backgroundColor('#A33A2A');
+    }
+  }
+
+  @Builder
+  versionBanner(): void {
+    if (this.versionNotice.length > 0) {
+      Column() {
+        Row() {
+          Text(this.versionNotice)
+            .fontSize(13)
+            .fontColor('#FFFFFF')
+            .layoutWeight(1);
+        }
+        .width('100%')
+        .padding({ left: 16, right: 16, top: 8, bottom: 4 });
+        if (this.versionHint.length > 0) {
+          Row() {
+            Text(this.versionHint)
+              .fontSize(12)
+              .fontColor('#FFFFFF')
+              .layoutWeight(1);
+          }
+          .width('100%')
+          .padding({ left: 16, right: 16, top: 0, bottom: 8 });
+        }
+      }
+      .width('100%')
+      .backgroundColor('#7A5A18');
     }
   }
 
@@ -232,6 +278,9 @@ struct Index {
     }
     this.isRefreshing = true;
     this.topError = '';
+    this.topHint = '';
+    this.versionNotice = '';
+    this.versionHint = '';
     const baseUrl: string | undefined = getStringSync(PREF_KEY_BASE_URL);
     const token: string | undefined = getStringSync(PREF_KEY_TOKEN);
     if (baseUrl === undefined || token === undefined || baseUrl.length === 0 || token.length === 0) {
@@ -243,13 +292,13 @@ struct Index {
     const tomorrow: string = isoDay(1);
     const eventsRes: ApiResult<AgendaEvent[]> = await fetchAgenda(baseUrl, token, today, tomorrow);
     if (!eventsRes.ok) {
-      this.topError = '拉取清单失败：' + (eventsRes.reason ?? '');
+      this.applyApiFailure('拉取清单', eventsRes);
       this.isRefreshing = false;
       return;
     }
     const pendingRes: ApiResult<AgendaEvent[]> = await fetchPending(baseUrl, token);
     if (!pendingRes.ok) {
-      this.topError = '拉取待确认失败：' + (pendingRes.reason ?? '');
+      this.applyApiFailure('拉取待确认', pendingRes);
       this.isRefreshing = false;
       return;
     }
@@ -265,9 +314,22 @@ struct Index {
     await putString(PREF_KEY_CACHED_PENDING, JSON.stringify(this.pendingEvents));
     await putString(PREF_KEY_LAST_SYNC, now);
     await putNumber('vaelis.apiVersion', eventsRes.apiVersion ?? 0);
+    if (eventsRes.versionNotice !== undefined) {
+      this.versionNotice = eventsRes.versionNotice.short;
+      this.versionHint = eventsRes.versionNotice.hint;
+    }
     this.isRefreshing = false;
     void this.reschedule(todayList.concat(tomorrowList));
     void this.checkNotificationPermission();
+  }
+
+  private applyApiFailure<T>(prefix: string, res: ApiResult<T>): void {
+    if (res.failure === undefined) {
+      this.topError = prefix + ' 失败：HTTP ' + String(res.status);
+      return;
+    }
+    this.topError = prefix + ' 失败：' + res.failure.short;
+    this.topHint = res.failure.hint;
   }
 
   private async decide(item: AgendaEvent, action: 'confirm' | 'dismiss'): Promise<void> {
@@ -279,7 +341,7 @@ struct Index {
     }
     const res: ApiResult<DecideResponse> = await postDecide(baseUrl, token, item.id, action);
     if (!res.ok) {
-      this.topError = '电脑上的 Vaelis 没开或调用失败：' + (res.reason ?? '');
+      this.applyApiFailure('批待确认', res);
       return;
     }
     this.topError = '';

@@ -2,6 +2,7 @@ import { http } from '@kit.NetworkKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { AgendaEvent } from '../model/AgendaEvent';
 import { DEFAULT_API_VERSION } from '../model/AppConfig';
+import { ApiFailure, classifyConnectFailure, classifyHttpFailure, classifyVersion, serverMajorVersion } from './ApiError';
 
 export interface DismissResult {
   deleted: boolean;
@@ -15,6 +16,10 @@ export interface ApiResult<T> {
   status: number;
   data?: T;
   apiVersion?: number;
+  serverMajor?: number;
+  expectedMajor: number;
+  failure?: ApiFailure;
+  versionNotice?: ApiFailure;
   reason?: string;
 }
 
@@ -76,6 +81,13 @@ function readHeader(headerObj: Object, key: string): string | undefined {
   return String(v);
 }
 
+function buildFailure(status: number, reason: string | undefined): ApiFailure {
+  if (status === 0) {
+    return classifyConnectFailure(reason);
+  }
+  return classifyHttpFailure(status, reason);
+}
+
 function doRequest<T>(
   baseUrl: string,
   token: string,
@@ -102,13 +114,36 @@ function doRequest<T>(
       (err: BusinessError, resp: http.HttpResponse): void => {
         req.destroy();
         if (err) {
-          resolve({ ok: false, status: 0, reason: err.message });
+          const failure: ApiFailure = buildFailure(0, err.message);
+          const out: ApiResult<T> = {
+            ok: false,
+            status: 0,
+            expectedMajor: DEFAULT_API_VERSION,
+            failure: failure,
+            reason: err.message,
+          };
+          resolve(out);
           return;
         }
         const code: number = resp.responseCode;
         const raw: string = typeof resp.result === 'string' ? resp.result : '';
+        const apiVersionRaw: string | undefined = readHeader(resp.header, HEADER_API_VERSION.toLowerCase());
+        const apiVersion: number | undefined = readApiVersion(apiVersionRaw);
+        const major: number | undefined = serverMajorVersion(apiVersionRaw);
+        const versionNotice: ApiFailure | undefined = classifyVersion(major, DEFAULT_API_VERSION);
         if (code < 200 || code >= 300) {
-          resolve({ ok: false, status: code, reason: raw });
+          const failure: ApiFailure = buildFailure(code, raw);
+          const out: ApiResult<T> = {
+            ok: false,
+            status: code,
+            apiVersion: apiVersion,
+            serverMajor: major,
+            expectedMajor: DEFAULT_API_VERSION,
+            failure: failure,
+            versionNotice: versionNotice,
+            reason: raw,
+          };
+          resolve(out);
           return;
         }
         let parsed: T | undefined = undefined;
@@ -116,13 +151,28 @@ function doRequest<T>(
           try {
             parsed = JSON.parse(raw) as T;
           } catch (e) {
-            resolve({ ok: false, status: code, reason: 'invalid JSON' });
+            const failure: ApiFailure = buildFailure(code, 'invalid JSON');
+            const out: ApiResult<T> = {
+              ok: false,
+              status: code,
+              expectedMajor: DEFAULT_API_VERSION,
+              failure: failure,
+              reason: 'invalid JSON',
+            };
+            resolve(out);
             return;
           }
         }
-        const rawVersion: string | undefined = readHeader(resp.header, HEADER_API_VERSION.toLowerCase());
-        const apiVersion: number | undefined = readApiVersion(rawVersion);
-        resolve({ ok: true, status: code, data: parsed, apiVersion: apiVersion });
+        const out: ApiResult<T> = {
+          ok: true,
+          status: code,
+          data: parsed,
+          apiVersion: apiVersion,
+          serverMajor: major,
+          expectedMajor: DEFAULT_API_VERSION,
+          versionNotice: versionNotice,
+        };
+        resolve(out);
       },
     );
   });
