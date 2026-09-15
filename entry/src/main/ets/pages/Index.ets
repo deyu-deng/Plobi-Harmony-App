@@ -88,10 +88,18 @@ struct Index {
         .fontSize(20)
         .fontWeight(FontWeight.Bold);
       Blank();
+      Button('问总秘书')
+        .type(ButtonType.Capsule)
+        .height(32)
+        .padding({ left: 14, right: 14 })
+        .onClick((): void => {
+          this.getUIContext().getRouter().pushUrl({ url: 'pages/ChatPage' });
+        });
       Button('刷新')
         .type(ButtonType.Capsule)
         .height(32)
         .padding({ left: 14, right: 14 })
+        .margin({ left: 8 })
         .enabled(!this.isRefreshing)
         .onClick((): void => {
           void this.refresh();
