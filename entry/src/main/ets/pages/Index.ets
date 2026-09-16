@@ -14,6 +14,7 @@ import {
 import { ensureNotificationEnabled, rescheduleReminders, ScheduledReminder } from '../service/ReminderService';
 import { todayLocalIso, localDateOfIso } from '../utils/LocalDate';
 import { parseDayPayload } from '../service/DayParser';
+import { TimelineRow, buildTimeline, markNow, kindLabel } from '../service/Timeline';
 
 @Entry
 @Component
@@ -24,7 +25,8 @@ struct Index {
   @State anchors: Anchor[] = [];
   @State planItems: PlanItem[] = [];
   @State conflicts: ConflictPair[] = [];
-  @State anchorNotice: string = '';
+  @State todayRows: TimelineRow[] = [];
+  @State tomorrowRows: TimelineRow[] = [];
   @State lastSyncText: string = '从未同步';
   @State reminderNotice: string = '';
   @State permissionWarning: string = '';
@@ -54,18 +56,26 @@ struct Index {
     const dayJson: string | undefined = getStringSync(PREF_KEY_CACHED_DAY);
     if (dayJson !== undefined) {
       const day: DayPayload = parseDayPayload(dayJson);
-      this.applyDayPayload(day);
+      this.anchors = day.anchors;
+      this.planItems = day.plan_items;
+      this.conflicts = day.conflicts;
     }
     const last: string | undefined = getStringSync(PREF_KEY_LAST_SYNC);
     if (last !== undefined) {
       this.lastSyncText = '上次同步 ' + last;
     }
+    this.rebuildTimeline();
   }
 
-  private applyDayPayload(day: DayPayload): void {
-    this.anchors = day.anchors;
-    this.planItems = day.plan_items;
-    this.conflicts = day.conflicts;
+  private rebuildTimeline(): void {
+    const tl = buildTimeline({
+      'todayEvents': this.todayEvents,
+      'anchors': this.anchors,
+      'planItems': this.planItems,
+      'tomorrowEvents': this.tomorrowEvents,
+    });
+    this.todayRows = markNow(tl.today, Date.now());
+    this.tomorrowRows = tl.tomorrow;
   }
 
   build(): void {
@@ -181,39 +191,23 @@ struct Index {
         if (this.conflicts.length > 0) {
           this.conflictChip();
         }
-        if (this.anchors.length > 0) {
-          this.sectionTitle('今日 · 作息');
-          ForEach(this.anchors, (item: Anchor): void => {
-            this.anchorRow(item);
-          }, (item: Anchor): string => item.id);
-        } else if (this.anchorNotice.length > 0) {
-          this.sectionTitle('今日 · 作息');
-          this.emptyHint(this.anchorNotice);
-        }
 
         this.sectionTitle('今日');
-        if (this.todayEvents.length === 0) {
-          this.emptyHint('今日没有已确认的安排');
+        if (this.todayRows.length === 0) {
+          this.emptyHint('今日没有安排');
         } else {
-          ForEach(this.todayEvents, (item: AgendaEvent): void => {
-            this.eventRow(item.id, item.title, item.start_at, item.end_at, item.kind);
-          }, (item: AgendaEvent): string => item.id);
-        }
-
-        if (this.planItems.length > 0) {
-          this.sectionTitle('今日 · 计划项');
-          ForEach(this.planItems, (item: PlanItem): void => {
-            this.eventRow(item.id, item.title, item.start_at, item.end_at, item.kind);
-          }, (item: PlanItem): string => 'plan-' + item.id);
+          ForEach(this.todayRows, (item: TimelineRow): void => {
+            this.timelineRow(item);
+          }, (item: TimelineRow): string => item.id);
         }
 
         this.sectionTitle('明日');
-        if (this.tomorrowEvents.length === 0) {
-          this.emptyHint('明日没有已确认的安排');
+        if (this.tomorrowRows.length === 0) {
+          this.emptyHint('明日没有安排');
         } else {
-          ForEach(this.tomorrowEvents, (item: AgendaEvent): void => {
-            this.eventRow(item.id, item.title, item.start_at, item.end_at, item.kind);
-          }, (item: AgendaEvent): string => 'tomorrow-' + item.id);
+          ForEach(this.tomorrowRows, (item: TimelineRow): void => {
+            this.timelineRow(item);
+          }, (item: TimelineRow): string => 'tomorrow-' + item.id);
         }
 
         this.sectionTitle('待确认');
@@ -254,13 +248,29 @@ struct Index {
   }
 
   @Builder
-  anchorRow(anchor: Anchor): void {
+  timelineRow(row: TimelineRow): void {
     Row() {
       Column() {
-        Text(anchor.title)
-          .fontSize(15)
-          .fontWeight(FontWeight.Medium);
-        Text(formatAnchorLine(anchor))
+        Row() {
+          Text(row.title.length > 0 ? row.title : '（无标题）')
+            .fontSize(15)
+            .fontWeight(FontWeight.Medium)
+            .maxLines(1)
+            .layoutWeight(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis });
+          if (row.isNow) {
+            Text('现在')
+              .fontSize(11)
+              .fontColor('#FFFFFF')
+              .padding({ left: 8, right: 8, top: 2, bottom: 2 })
+              .borderRadius(10)
+              .backgroundColor('#1A8C4A')
+              .margin({ left: 8 });
+          }
+        }
+        .width('100%')
+        .alignItems(VerticalAlign.Center);
+        Text(formatLine(row.start_at, row.end_at))
           .fontSize(13)
           .fontColor($r('sys.color.ohos_id_color_text_secondary'))
           .margin({ top: 4 });
@@ -268,7 +278,7 @@ struct Index {
       .layoutWeight(1)
       .alignItems(HorizontalAlign.Start);
 
-      Text(anchor.flex ? '挪过位' : anchor.template_id)
+      Text(kindLabel(row))
         .fontSize(11)
         .fontColor($r('sys.color.ohos_id_color_text_tertiary'))
         .padding({ left: 8, right: 8, top: 2, bottom: 2 })
@@ -279,6 +289,8 @@ struct Index {
     .padding(12)
     .borderRadius(8)
     .backgroundColor($r('sys.color.ohos_id_color_card_background'))
+    .borderWidth(row.isNow ? 1 : 0)
+    .borderColor(row.isNow ? '#1A8C4A' : Color.Transparent)
     .margin({ bottom: 8 });
   }
 
@@ -302,37 +314,6 @@ struct Index {
       .borderRadius(8)
       .backgroundColor($r('sys.color.ohos_id_color_card_background'))
       .margin({ bottom: 8 });
-  }
-
-  @Builder
-  eventRow(id: string, title: string, startAt: string, endAt: string | undefined, kind: string): void {
-    Row() {
-      Column() {
-        Text(title)
-          .fontSize(15)
-          .fontWeight(FontWeight.Medium)
-          .maxLines(1)
-          .textOverflow({ overflow: TextOverflow.Ellipsis });
-        Text(formatLine(startAt, endAt))
-          .fontSize(13)
-          .fontColor($r('sys.color.ohos_id_color_text_secondary'))
-          .margin({ top: 4 });
-      }
-      .layoutWeight(1)
-      .alignItems(HorizontalAlign.Start);
-
-      Text(kind)
-        .fontSize(11)
-        .fontColor($r('sys.color.ohos_id_color_text_tertiary'))
-        .padding({ left: 8, right: 8, top: 2, bottom: 2 })
-        .borderRadius(10)
-        .backgroundColor($r('sys.color.ohos_id_color_sub_background'));
-    }
-    .width('100%')
-    .padding(12)
-    .borderRadius(8)
-    .backgroundColor($r('sys.color.ohos_id_color_card_background'))
-    .margin({ bottom: 8 });
   }
 
   @Builder
@@ -371,7 +352,6 @@ struct Index {
     this.topHint = '';
     this.versionNotice = '';
     this.versionHint = '';
-    this.anchorNotice = '';
     const baseUrl: string | undefined = getStringSync(PREF_KEY_BASE_URL);
     const token: string | undefined = getStringSync(PREF_KEY_TOKEN);
     if (baseUrl === undefined || token === undefined || baseUrl.length === 0 || token.length === 0) {
@@ -404,19 +384,17 @@ struct Index {
     this.tomorrowEvents = tomorrowList;
     this.pendingEvents = pendingRes.data ?? [];
     if (dayRes.ok && dayRes.data !== undefined) {
-      this.applyDayPayload(dayRes.data);
+      this.anchors = dayRes.data.anchors;
+      this.planItems = dayRes.data.plan_items;
+      this.conflicts = dayRes.data.conflicts;
       await putString(PREF_KEY_CACHED_DAY, JSON.stringify(dayRes.data));
     } else {
       this.anchors = [];
       this.planItems = [];
       this.conflicts = [];
-      if (dayRes.failure !== undefined) {
-        this.anchorNotice = '作息暂未同步：' + dayRes.failure.short;
-      } else {
-        this.anchorNotice = '作息暂未同步';
-      }
       await putString(PREF_KEY_CACHED_DAY, '');
     }
+    this.rebuildTimeline();
     const now: string = formatNow();
     this.lastSyncText = '上次同步 ' + now;
     await putString(PREF_KEY_CACHED_EVENTS, JSON.stringify(all));
@@ -577,10 +555,4 @@ function formatNow(): string {
     return n < 10 ? '0' + n.toString() : n.toString();
   };
   return pad(d.getHours()) + ':' + pad(d.getMinutes());
-}
-
-function formatAnchorLine(anchor: Anchor): string {
-  const start: string = hhmm(anchor.start_at);
-  const end: string = hhmm(anchor.end_at);
-  return start + '–' + end;
 }
