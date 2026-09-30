@@ -12,7 +12,7 @@
 ArkTS Stage 模型工程，对应 Plobi 系统的**手机面**：
 [Docs/SPEC-FINAL.md](../Plobi-Desktop/Docs/SPEC-FINAL.md) 的「人机面 · 终极手机」段（独立 App、鸿蒙优先、看板/批准/指令/预览/本地提醒、**不接管鼠标**）。
 
-> 调研见 [Docs/research/harmony-app.md](../Plobi-Desktop/Docs/research/harmony-app.md)（H0 交付物）。
+> 调研见 [Docs/reference/harmony-app.md](../Plobi-Desktop/Docs/reference/harmony-app.md)（H0 交付物）。
 > 排期与关门条件见 [Docs/ROADMAP.md](../Plobi-Desktop/Docs/ROADMAP.md) §4 Wave H。
 > ~~任务书 `AGENT-TASK-H2-APP-V0.md`~~ 已按文档纪律在验收后删除（一次性耗材），结论在 `Docs/PROGRESS.md`。
 
