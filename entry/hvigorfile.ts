@@ -1,4 +1,4 @@
-import { hapTasks } from '@ohos.app.ability';
+import { hapTasks } from '@ohos/hvigor-ohos-plugin';
 
 export default {
   system: hapTasks,

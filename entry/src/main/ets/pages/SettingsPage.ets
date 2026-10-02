@@ -56,7 +56,7 @@ struct SettingsPage {
             .height(44)
             .padding({ left: 12, right: 12 })
             .borderRadius(8)
-            .backgroundColor($r('sys.color.ohos_id_color_card_background'))
+            .backgroundColor($r('sys.color.ohos_id_color_card_bg'))
             .onChange((value: string): void => {
               this.baseUrl = value;
             });
@@ -71,7 +71,7 @@ struct SettingsPage {
             .height(44)
             .padding({ left: 12, right: 12 })
             .borderRadius(8)
-            .backgroundColor($r('sys.color.ohos_id_color_card_background'))
+            .backgroundColor($r('sys.color.ohos_id_color_card_bg'))
             .type(InputType.Password)
             .onChange((value: string): void => {
               this.token = value;

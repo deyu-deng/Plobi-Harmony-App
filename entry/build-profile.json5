@@ -8,18 +8,6 @@
       }
     }
   },
-  "buildProfiler": [
-    {
-      "resource": {
-        "directories": [
-          "src/main/resources/base/profile"
-        ]
-      },
-      "abiFilters": [
-        "arm64-v8a"
-      ]
-    }
-  ],
   "targets": [
     {
       "name": "default"

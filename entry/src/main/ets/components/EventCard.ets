@@ -74,7 +74,7 @@ export struct EventCard {
     .width('100%')
     .padding(12)
     .borderRadius(8)
-    .backgroundColor($r('sys.color.ohos_id_color_card_background'))
+    .backgroundColor($r('sys.color.ohos_id_color_card_bg'))
     .margin({ bottom: 8 })
     .onClick((): void => {
       this.isExpanded = !this.isExpanded;

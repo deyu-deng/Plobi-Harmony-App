@@ -288,7 +288,7 @@ struct Index {
     .width('100%')
     .padding(12)
     .borderRadius(8)
-    .backgroundColor($r('sys.color.ohos_id_color_card_background'))
+    .backgroundColor($r('sys.color.ohos_id_color_card_bg'))
     .borderWidth(row.isNow ? 1 : 0)
     .borderColor(row.isNow ? '#1A8C4A' : Color.Transparent)
     .margin({ bottom: 8 });
@@ -312,7 +312,7 @@ struct Index {
       .width('100%')
       .padding(12)
       .borderRadius(8)
-      .backgroundColor($r('sys.color.ohos_id_color_card_background'))
+      .backgroundColor($r('sys.color.ohos_id_color_card_bg'))
       .margin({ bottom: 8 });
   }
 

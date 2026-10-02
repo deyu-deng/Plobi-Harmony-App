@@ -1,4 +1,4 @@
-import { appTasks } from '@ohos.app.ability';
+import { appTasks } from '@ohos/hvigor-ohos-plugin';
 
 export default {
   system: appTasks,

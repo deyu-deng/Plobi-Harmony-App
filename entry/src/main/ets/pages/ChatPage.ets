@@ -132,7 +132,7 @@ struct ChatPage {
       .width('100%')
       .padding(16)
       .borderRadius(8)
-      .backgroundColor($r('sys.color.ohos_id_color_card_background'))
+      .backgroundColor($r('sys.color.ohos_id_color_card_bg'))
       .margin({ top: 8, bottom: 8 });
   }
 
@@ -145,7 +145,7 @@ struct ChatPage {
           .fontColor(item.role === 'user' ? '#FFFFFF' : $r('sys.color.ohos_id_color_text_primary'))
           .padding(12)
           .borderRadius(12)
-          .backgroundColor(item.role === 'user' ? '#1A8C4A' : $r('sys.color.ohos_id_color_card_background'))
+          .backgroundColor(item.role === 'user' ? '#1A8C4A' : $r('sys.color.ohos_id_color_card_bg'))
           .maxLines(500)
           .textOverflow({ overflow: TextOverflow.Ellipsis });
         Text(item.role === 'user' ? '我' : this.l1Name + ' · ' + formatLocalTime(item.createdAtIso))
@@ -171,7 +171,7 @@ struct ChatPage {
         .height(40)
         .padding({ left: 12, right: 12 })
         .borderRadius(20)
-        .backgroundColor($r('sys.color.ohos_id_color_card_background'))
+        .backgroundColor($r('sys.color.ohos_id_color_card_bg'))
         .enabled(!this.isSending)
         .onChange((value: string): void => {
           this.input = value;
