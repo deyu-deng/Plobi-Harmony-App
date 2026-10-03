@@ -66,7 +66,7 @@ struct SettingsPage {
             .fontColor($r('sys.color.ohos_id_color_text_secondary'))
             .width('100%')
             .margin({ top: 16, bottom: 6 });
-          TextInput({ placeholder: 'X-Vaelis-Session-Token 的值', text: this.token })
+          TextInput({ placeholder: '配对令牌（桌面 doctor --print-app-token 取）', text: this.token })
             .width('100%')
             .height(44)
             .padding({ left: 12, right: 12 })

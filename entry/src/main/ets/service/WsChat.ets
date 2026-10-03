@@ -4,7 +4,7 @@ import { buildWsUrl } from './WsUrl';
 import { ApiFailure, classifyConnectFailure, classifyHttpFailure } from './ApiError';
 import { ChatEvent, ChatEventKind, ChatSubmitParams } from '../model/ChatMessage';
 
-const HEADER_TOKEN: string = 'X-Vaelis-Session-Token';
+const HEADER_TOKEN: string = 'X-Plobi-Session-Token';
 const WS_CLOSE_TOKEN_REJECTED: number = 4401;
 const REQUEST_TIMEOUT_MS: number = 30000;
 
@@ -16,7 +16,7 @@ export interface ChatSendOutcome {
 }
 
 interface RequestHeader {
-  'X-Vaelis-Session-Token': string;
+  'X-Plobi-Session-Token': string;
 }
 
 function classifyWsClose(code: number): ApiFailure | undefined {
@@ -24,7 +24,7 @@ function classifyWsClose(code: number): ApiFailure | undefined {
     return {
       'kind': 'token-rejected',
       'short': '令牌错（WS 4401）',
-      'hint': '令牌错：在桌面运行 python scripts/vaelis/doctor.py --print-app-token 重新填',
+      'hint': '令牌错：在桌面运行 python scripts/plobi/doctor.py --print-app-token 重新填',
     };
   }
   return {
@@ -157,7 +157,7 @@ export function sendPromptOverWs(
     const ws: webSocket.WebSocket = webSocket.createWebSocket();
     const wsUrl: string = buildWsUrl(baseUrl);
     const header: RequestHeader = {
-      'X-Vaelis-Session-Token': token,
+      'X-Plobi-Session-Token': token,
     };
     let accumulated: string = '';
     let done: boolean = false;

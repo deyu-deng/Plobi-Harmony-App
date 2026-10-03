@@ -25,12 +25,12 @@ export interface ApiResult<T> {
 
 interface RequestHeader {
   'Accept': string;
-  'X-Vaelis-Session-Token': string;
-  'X-Vaelis-Api-Version': string;
+  'X-Plobi-Session-Token': string;
+  'X-Plobi-Api-Version': string;
 }
 
-const HEADER_TOKEN: string = 'X-Vaelis-Session-Token';
-const HEADER_API_VERSION: string = 'X-Vaelis-Api-Version';
+const HEADER_TOKEN: string = 'X-Plobi-Session-Token';
+const HEADER_API_VERSION: string = 'X-Plobi-Api-Version';
 const DIGIT_RE: RegExp = new RegExp('([0-9]+)');
 const TRAILING_SLASH_RE: RegExp = new RegExp('/+$');
 
@@ -99,8 +99,8 @@ function doRequest<T>(
     const req: http.HttpRequest = http.createHttp();
     const header: RequestHeader = {
       'Accept': 'application/json',
-      'X-Vaelis-Session-Token': token,
-      'X-Vaelis-Api-Version': String(DEFAULT_API_VERSION),
+      'X-Plobi-Session-Token': token,
+      'X-Plobi-Api-Version': String(DEFAULT_API_VERSION),
     };
     req.request(
       buildUrl(baseUrl, path, query),

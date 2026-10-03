@@ -11,7 +11,7 @@ import {
   PREF_KEY_CHAT_HISTORY,
 } from '../model/AppConfig';
 
-const HEADER_TOKEN: string = 'X-Vaelis-Session-Token';
+const HEADER_TOKEN: string = 'X-Plobi-Session-Token';
 const MAX_HISTORY: number = 100;
 
 @Entry
