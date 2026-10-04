@@ -9,8 +9,8 @@ export default function wsUrlTest(): void {
     });
 
     it('converts https://host to wss://host/api/ws', 0, (): void => {
-      const url: string = buildWsUrl('https://vaelis.example.com');
-      expect(url).assertEqual('wss://vaelis.example.com/api/ws');
+      const url: string = buildWsUrl('https://plobi.example.com');
+      expect(url).assertEqual('wss://plobi.example.com/api/ws');
     });
 
     it('strips trailing slash before adding path', 0, (): void => {
@@ -24,8 +24,8 @@ export default function wsUrlTest(): void {
     });
 
     it('returns ws://... for unknown scheme prefix', 0, (): void => {
-      const url: string = buildWsUrl('vaelis.local:8787');
-      expect(url).assertEqual('ws://vaelis.local:8787/api/ws');
+      const url: string = buildWsUrl('plobi.local:8787');
+      expect(url).assertEqual('ws://plobi.local:8787/api/ws');
     });
 
     it('NEVER embeds token in URL (negative test)', 0, (): void => {

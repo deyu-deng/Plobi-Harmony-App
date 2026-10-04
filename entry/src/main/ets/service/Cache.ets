@@ -2,7 +2,7 @@ import { preferences } from '@kit.ArkData';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { common } from '@kit.AbilityKit';
 
-const STORE_NAME: string = 'vaelis_app_cache';
+const STORE_NAME: string = 'plobi_app_cache';
 
 let cached: preferences.Preferences | null = null;
 

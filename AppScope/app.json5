@@ -1,7 +1,7 @@
 {
   "app": {
-    "bundleName": "com.vaelis.harmony.app",
-    "vendor": "vaelis",
+    "bundleName": "com.plobi.harmony.app",
+    "vendor": "plobi",
     "versionCode": 1000000,
     "versionName": "0.1.0",
     "icon": "$media:app_icon",

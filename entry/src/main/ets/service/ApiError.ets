@@ -3,11 +3,11 @@
  *
  * 把 HTTP / 网络层的结果映成 3 种用户可感知的失败原因（裁定 32.6）：
  *   - 'desktop-offline'  = TCP 连不上（电脑没开 / 端口未开 / 服务进程挂了）
- *   - 'lan-unreachable'  = TCP 超时（同网不同段 / 桌面端 VAELIS_LAN 没开 / WiFi 错）
+ *   - 'lan-unreachable'  = TCP 超时（同网不同段 / 桌面端 PLOBI_LAN 没开 / WiFi 错）
  *   - 'token-rejected'   = HTTP 401 / 403（令牌错 / 过期 / 文件被覆盖）
  *
  * 加上一种版本不匹配（不是失败，但用户需要看升级提示）：
- *   - 'version-mismatch' = 响应 X-Vaelis-Api-Version 主版本 ≠ 1
+ *   - 'version-mismatch' = 响应 X-Plobi-Api-Version 主版本 ≠ 1
  */
 
 export type ApiFailureKind = 'desktop-offline' | 'lan-unreachable' | 'token-rejected' | 'http-error' | 'unknown';
@@ -18,9 +18,9 @@ export interface ApiFailure {
   hint: string;
 }
 
-const TIMEOUT_HINT: string = '检查 WiFi 是否同一局域网，或桌面侧 VAELIS_LAN 没开';
-const OFFLINE_HINT: string = '打开桌面上的 Vaelis（启动后端会在 0.0.0.0:8787）';
-const TOKEN_HINT: string = '令牌错：在桌面运行 python scripts/vaelis/doctor.py --print-app-token 重新填';
+const TIMEOUT_HINT: string = '检查 WiFi 是否同一局域网，或桌面侧 PLOBI_LAN 没开';
+const OFFLINE_HINT: string = '打开桌面上的 Plobi（启动后端会在 0.0.0.0:8787）';
+const TOKEN_HINT: string = '令牌错：在桌面运行 python scripts/plobi/doctor.py --print-app-token 重新填';
 const HTTP_HINT: string = '桌面侧返回错误，检查桌面日志';
 
 const REFETUSED_KEYS: ReadonlyArray<string> = [
@@ -50,7 +50,7 @@ export function classifyConnectFailure(reason: string | undefined): ApiFailure {
   if (hasAny(msg, REFETUSED_KEYS)) {
     return {
       'kind': 'desktop-offline',
-      'short': '电脑上的 Vaelis 没开',
+      'short': '电脑上的 Plobi 没开',
       'hint': OFFLINE_HINT,
     };
   }

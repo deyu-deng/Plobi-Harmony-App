@@ -121,7 +121,7 @@ struct SettingsPage {
             .fontSize(13)
             .fontColor($r('sys.color.ohos_id_color_text_secondary'))
             .width('100%');
-          Text('· 桌面 Vaelis 启动后，监听 0.0.0.0:8787（参见 H1-API-HARDEN 任务书）。')
+          Text('· 桌面 Plobi 启动后，监听 0.0.0.0:8787（参见 H1-API-HARDEN 任务书）。')
             .fontSize(13)
             .fontColor($r('sys.color.ohos_id_color_text_secondary'))
             .width('100%')

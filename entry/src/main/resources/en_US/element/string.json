@@ -2,19 +2,19 @@
   "string": [
     {
       "name": "module_desc",
-      "value": "Vaelis entry module"
+      "value": "Plobi entry module"
     },
     {
       "name": "EntryAbility_desc",
-      "value": "Vaelis agenda + reminders"
+      "value": "Plobi agenda + reminders"
     },
     {
       "name": "EntryAbility_label",
-      "value": "Vaelis"
+      "value": "Plobi"
     },
     {
       "name": "perm_internet_reason",
-      "value": "Pull today's and tomorrow's agenda from the desktop Vaelis."
+      "value": "Pull today's and tomorrow's agenda from the desktop Plobi."
     },
     {
       "name": "perm_reminder_reason",

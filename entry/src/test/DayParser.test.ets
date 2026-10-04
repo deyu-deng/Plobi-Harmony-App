@@ -85,7 +85,7 @@ export default function dayParserTest(): void {
       const planEvidence: Object = PLAN_EVIDENCE;
       const plan: TestPlanItem = {
         'id': 'p1',
-        'title': '推进 Vaelis',
+        'title': '推进 Plobi',
         'start_at': '2026-09-14T14:00:00',
         'end_at': '2026-09-14T16:00:00',
         'kind': 'task',

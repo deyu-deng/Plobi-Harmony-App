@@ -5,7 +5,7 @@ import { window } from '@kit.ArkUI';
 import { initCache } from '../service/Cache';
 import { ensureNotificationEnabled } from '../service/ReminderService';
 
-const TAG: string = 'VaelisEntry';
+const TAG: string = 'PlobiEntry';
 const DOMAIN: number = 0x0001;
 
 export default class EntryAbility extends UIAbility {

@@ -9,7 +9,7 @@ import {
 
 export { ScheduledReminder };
 
-const APP_PACKAGE_TAG: string = 'vaelis';
+const APP_PACKAGE_TAG: string = 'plobi';
 
 /**
  * 请求通知/后台代理提醒权限。
@@ -30,7 +30,7 @@ function buildReminderReq(event: AgendaEvent, triggerSeconds: number): reminderA
   const req: reminderAgentManager.ReminderRequestTimer = {
     reminderType: reminderAgentManager.ReminderType.REMINDER_TYPE_TIMER,
     triggerTimeInSeconds: triggerSeconds,
-    title: 'Vaelis · ' + event.title,
+    title: 'Plobi · ' + event.title,
     content: '15 分钟后开始',
     expiredContent: '已过期',
     notificationId: hashEventId(event.id),

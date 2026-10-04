@@ -2,7 +2,7 @@
  * 把 HTTP 基址映成 WebSocket 端点 URL（**不含** token）。
  *
  * 任务书 §复用：「**禁止**把 token 放进 URL」。
- * 鉴权走请求头 `X-Vaelis-Session-Token`（与 HTTP 同步）。
+ * 鉴权走请求头 `X-Plobi-Session-Token`（与 HTTP 同步）。
  *
  * 例：baseUrl=http://192.168.1.8:8787 → ws://192.168.1.8:8787/api/ws
  */

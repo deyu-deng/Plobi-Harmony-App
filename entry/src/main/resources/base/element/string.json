@@ -2,19 +2,19 @@
   "string": [
     {
       "name": "module_desc",
-      "value": "Vaelis entry module"
+      "value": "Plobi entry module"
     },
     {
       "name": "EntryAbility_desc",
-      "value": "Vaelis agenda + reminders"
+      "value": "Plobi agenda + reminders"
     },
     {
       "name": "EntryAbility_label",
-      "value": "Vaelis"
+      "value": "Plobi"
     },
     {
       "name": "perm_internet_reason",
-      "value": "拉取桌面 Vaelis 的今日/明日日程"
+      "value": "拉取桌面 Plobi 的今日/明日日程"
     },
     {
       "name": "perm_reminder_reason",

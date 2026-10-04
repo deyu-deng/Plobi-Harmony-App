@@ -94,7 +94,7 @@ struct Index {
   @Builder
   headerBar(): void {
     Row() {
-      Text('Vaelis')
+      Text('Plobi')
         .fontSize(20)
         .fontWeight(FontWeight.Bold);
       Blank();
@@ -400,7 +400,7 @@ struct Index {
     await putString(PREF_KEY_CACHED_EVENTS, JSON.stringify(all));
     await putString(PREF_KEY_CACHED_PENDING, JSON.stringify(this.pendingEvents));
     await putString(PREF_KEY_LAST_SYNC, now);
-    await putNumber('vaelis.apiVersion', eventsRes.apiVersion ?? 0);
+    await putNumber('plobi.apiVersion', eventsRes.apiVersion ?? 0);
     if (eventsRes.versionNotice !== undefined) {
       this.versionNotice = eventsRes.versionNotice.short;
       this.versionHint = eventsRes.versionNotice.hint;
