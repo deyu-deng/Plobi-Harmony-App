@@ -22,7 +22,7 @@ ArkTS Stage 模型工程，对应 Plobi 系统的**手机面**：
 
 1. **配对**：首启填桌面 LAN 地址 + 会话令牌，入 Preferences；冷启动自动用
 2. **清单**：今日 / 明日 / 待确认 三段；`HH:MM–HH:MM 标题`，`end_at` 空只显示开始并标「未写结束」
-3. **批待确认**：点「确认 / 忽略」→ 调 `POST /api/agenda/{id}/{confirm|dismiss}`
+3. **批待确认**：点「确认 / 忽略」→ 调 `POST /api/handset/agenda/{id}/{confirm|dismiss}`
 4. **本地提醒**：每次同步后重排，触发 = `start_at − 15min`，上限 30 条/包（系统限制 1700002）
 5. **离线**：先渲染缓存 + 标「上次同步 HH:MM」；桌面关闭不白屏
 6. **冷启动 < 3s**：先 cache 后 network
@@ -38,30 +38,39 @@ ArkTS Stage 模型工程，对应 Plobi 系统的**手机面**：
 - `@ohos.data.preferences`
 - 拒 RN / Flutter / Compose / WebView 壳
 
-## 公开 API（消费）
+## 公开 API（消费）——**本表已于 2026-10-04 过期，照下面这份改**
+
+契约真源只有一份：[Docs/specs/handset-app.md](../Plobi-Desktop/Docs/specs/handset-app.md)
+（手机侧交接规格）与 [Docs/specs/api.md](../Plobi-Desktop/Docs/specs/api.md)「Plobi App / 设备面」。
 
 | Method | Path | 说明 |
 |---|---|---|
-| GET | `/api/agenda?from=&to=` | 已确认事件 + 待确认事件 |
-| GET | `/api/agenda/pending` | 仅待确认 |
-| POST | `/api/agenda/{id}/confirm` | 确认 |
-| POST | `/api/agenda/{id}/dismiss` | 忽略（响应可能 `{deleted:true}`） |
+| GET | `/api/handset/agenda?from=&to=` | 已确认事件 + 待确认事件 |
+| GET | `/api/handset/agenda/pending` | 仅待确认 |
+| GET | `/api/handset/agenda/day?date=` | 一天快照（含冲突、避让时段） |
+| POST | `/api/handset/agenda/{id}/confirm` | 确认 |
+| POST | `/api/handset/agenda/{id}/dismiss` | 忽略（响应可能 `{deleted:true}`） |
 
-契约真源：[Docs/specs/api.md](../Plobi-Desktop/Docs/specs/api.md)。**App 走桌面同一套公开 API，不另开私口**（裁定 28.2）。
+**为什么多了 `/api/handset` 这一段**（裁定 57）：桌面把一条 URL 注册成"钥匙认证"之后，
+那条 URL 就**只认设备钥匙**、浏览器登录态反被挡在外面；而 `/api/agenda` 是桌面看板
+每分钟都在调的。所以同一份 handler 挂两个门牌：浏览器留 `/api/agenda`，设备走
+`/api/handset/agenda`。**本仓现有代码还在打 `/api/agenda*`，在局域网绑定上必然 401**——
+这就是交接规格里的 `WP-APP-HANDSET`（第一刀）。
 
-### ⚠️ 请求头名字两边不一致（待核，别照抄任何一边）
+### 请求头与钥匙（这段已由实测替换，旧结论作废）
 
-- **后端只读新名，没有旧名兼容路径**（2026-10-03 读了实现，不再是推测）：
-  `Code/plobi_cli/web_server.py:298` 定 `_SESSION_HEADER_NAME = "X-Plobi-Session-Token"`，`:554` 取这一个头，
-  `:561` 兜 `Authorization: Bearer <token>`；`X-Vaelis-*` 在 Code 非测试代码里 **0 处**。
-- **LAN 模式下必然拦截**：`should_require_auth` 对非 loopback 一律 True，`--insecure` 已不再放行；
-  网关只有一条 `if not _has_valid_session_token(request): raise 401`（`web_server.py:607`）。
-  平板只能走 LAN，所以本仓改之前**每个 `/api/agenda*`、`/api/agents`、`/api/ws` 请求都是 401**。
-- **方向是改 App**：后端是新契约（`Code/tests/plobi/test_app_token.py:403` 断言平板带新名过 `/api/ws`），
-  桌面 `apps/desktop/electron/main.ts:3880` 也发新名。本仓已随 **WP-APP-TOKEN**（commit `092d650`）改成
-  `X-Plobi-Session-Token`，并一并修了同样错的 `X-Vaelis-Api-Version` → `X-Plobi-Api-Version`
-  （后端名见 `web_server.py:330`）。
-- **仍未验的那一半**：401 是否真消失要**装上设备才知道**——见下面「当前状态」，HAP 还没出过货。
+- ~~本仓改之前每个请求都是 401，改头名之后待验~~ → **2026-10-04 实测**：只改头名**不通**。
+  非本机绑定时判断权在 cookie/session 网关手里，而**唯一认 app_token 的那段代码在这条路上
+  不被调用**（当时 `WP-APP-TOKEN` 那一刀因此只算"改对了名字"）。真正的修法是桌面侧把设备路由
+  注册进现成的 token-auth 门缝，即上面那个前缀。
+- 头：`Authorization: Bearer <app_token>` 或 `X-Plobi-Session-Token: <app_token>` 两种都收
+  （现仓发的 `X-Plobi-Session-Token` 仍然有效，**不用改头名，只改路径**）。
+- 版本头：响应带 `X-Plobi-Api-Version: 1`；主版本对不上就提示"请升级桌面"，别硬解字段。
+- 钥匙打不开写口：`POST /api/handset/agenda`（往看板加一条）与 `PATCH/DELETE` 一律 401——
+  这是设计，不是 bug。拿设备钥匙打 `/api/agenda*` 也是 401。
+- WS `ws://<LAN-IP>:8787/api/ws`：带 app_token 的升级请求实测开得起来，无/错的被 **HTTP 403**
+  拒（旧文档写的"拒绝码 4401"不成立）。**待真机确认**：`@ohos.net.webSocket` 握手能不能带自定义头。
+- 聊天那一格还欠一个桌面侧的口子：拿 `sessionId` 要用的 `/api/agents` 现在钥匙打不开（见交接规格 §8）。
 
 ## 工程落点
 
@@ -80,7 +89,7 @@ ArkTS Stage 模型工程，对应 Plobi 系统的**手机面**：
   已排除"PATH 没设好"——把 DevEco 自带 jbr（OpenJDK 25.0.2）加进 PATH 后 `where java` /
   `java -version` / node `spawnSync('java')` 全部成功，hvigor 自己的 java daemon 仍报同一句。
   **下一步该查的是 hvigor 怎么找 java**（或直接在 DevEco GUI 里构建），不是再折腾 PATH。
-- **仍未上真机**：设备上跑起来、以及「401 是否真消失」都还没验过——这一条不许因为"编译通过"就升级。
+- **仍未上真机**：设备上跑起来还没验过——这一条不许因为"编译通过"就升级。**但 401 的根因已在桌面这一边修掉并实测**（2026-10-04，真实局域网绑定上带钥匙读清单/day/pending = 200；见 `Docs/specs/handset-app.md`）。**设备侧还差两件事**：① 把请求从 `/api/agenda*` 换到 `/api/handset/agenda*`（`WP-APP-HANDSET`，不换必 401）；② 出包（停在 `PackageHap` 那条）。
 - 本机命令入口（这套路径只在 `Cycle` 上成立）：
   `node "D:\Software\DevEco Studio\tools\hvigor\bin\hvigorw.js" assembleHap --mode module -p product=default`，
   环境变量 `DEVECO_SDK_HOME=D:\Software\DevEco Studio\sdk`。
