@@ -20,7 +20,9 @@ ArkTS Stage 模型工程，对应 Plobi 系统的**手机面**：
 
 ## 能力（H2 切片）
 
-1. **配对**：首启填桌面 LAN 地址 + 会话令牌，入 Preferences；冷启动自动用
+1. **配对**：首启填桌面 LAN 地址；**钥匙不再手填**——桌面点「新码」出 6 位数字，App 一次
+   `POST /api/handset/pair/redeem` 换回**本机专属令牌**，入 Preferences，冷启动自动用
+   （2026-10-05 裁定 64 改了这一块，见下面「请求头与钥匙」）
 2. **清单**：今日 / 明日 / 待确认 三段；`HH:MM–HH:MM 标题`，`end_at` 空只显示开始并标「未写结束」
 3. **批待确认**：点「确认 / 忽略」→ 调 `POST /api/handset/agenda/{id}/{confirm|dismiss}`
 4. **本地提醒**：每次同步后重排，触发 = `start_at − 15min`，上限 30 条/包（系统限制 1700002）
@@ -63,13 +65,31 @@ ArkTS Stage 模型工程，对应 Plobi 系统的**手机面**：
   非本机绑定时判断权在 cookie/session 网关手里，而**唯一认 app_token 的那段代码在这条路上
   不被调用**（当时 `WP-APP-TOKEN` 那一刀因此只算"改对了名字"）。真正的修法是桌面侧把设备路由
   注册进现成的 token-auth 门缝，即上面那个前缀。
-- 头：`Authorization: Bearer <app_token>` 或 `X-Plobi-Session-Token: <app_token>` 两种都收
-  （现仓发的 `X-Plobi-Session-Token` 仍然有效，**不用改头名，只改路径**）。
+- ~~头：`Authorization: Bearer <app_token>` 或 `X-Plobi-Session-Token: <app_token>` 两种都收
+  （现仓发的 `X-Plobi-Session-Token` 仍然有效，**不用改头名，只改路径**）~~
+  **2026-10-05 纠正（裁定 64）：头名照旧，但里面放的东西换了。**设备面现在只认**这台设备配对换来的
+  令牌**，`app_token` 打 `/api/handset/*` 一律 401（有测试钉住）。**同日裁定 68 更进一步：`app_token`
+  已整体退役**（mint、读盘、loopback HTTP 那一跳、WS 升级那一跳全删，`doctor --print-app-token` 也没了），
+  所以它**任何面都不认**——没配对过的设备连不上，**没有回退路**，配对界面是进门唯一通道。
+  所以本仓要做的是**三件事**，
+  不是原来说的两件：① 路径 `/api/agenda*` → `/api/handset/agenda*`；② **加一个配对界面**
+  （桌面开码 → 用户敲 6 位 → 存返回的 `token`）；③ 之后每个请求把 `token` 放头里
+  （`X-Plobi-Session-Token: <设备令牌>` 或 `Authorization: Bearer <设备令牌>`，两种都收）。
+- **配对这一趟的契约**（详细版在交接规格 §2，那才是真源）：
+  `POST /api/handset/pair/redeem`，body `{"code": "123456", "deviceName": "客厅平板"}` →
+  `200 {"deviceId", "token", "scopes"}`。这是设备面**唯一免凭证**的一次调用。码 **5 分钟有效、只能用一次**；
+  **令牌只在这次响应里出现**，桌面不存明文，所以拿到就得存好——丢了没有"找回"，只能回桌面重新配一次。
+  错误分支要分开提示用户：**401** = 码错/过期/用过（让用户回桌面重开一个码），
+  **429 + `Retry-After`** = 连错 5 次、配对锁 1 小时（这段时间**别自动重试**，照 `Retry-After` 提示）。
+  `deviceName` 最长 64 字，建议给一个用户看得懂的名字（"客厅平板"），桌面列表就显示它。
 - 版本头：响应带 `X-Plobi-Api-Version: 1`；主版本对不上就提示"请升级桌面"，别硬解字段。
 - 钥匙打不开写口：`POST /api/handset/agenda`（往看板加一条）与 `PATCH/DELETE` 一律 401——
-  这是设计，不是 bug。拿设备钥匙打 `/api/agenda*` 也是 401。
-- WS `ws://<LAN-IP>:8787/api/ws`：带 app_token 的升级请求实测开得起来，无/错的被 **HTTP 403**
-  拒（旧文档写的"拒绝码 4401"不成立）。**待真机确认**：`@ohos.net.webSocket` 握手能不能带自定义头。
+  这是设计，不是 bug。拿设备钥匙打 `/api/agenda*` 也是 401；反过来**浏览器登录态也进不了
+  `/api/handset/*`**（那个前缀是设备专用的，裁定 64.4）。
+- WS `ws://<LAN-IP>:8787/api/ws`：**带设备令牌的升级请求能过认证**（桌面侧实测到 `_ws_auth_reason`
+  这一层，真机那一跳还没打，走的是同一条分支），无/错的被 **HTTP 403** 拒（旧文档写的"拒绝码 4401"
+  不成立）。桌面撤销一台设备之后，它**下一次握手就进不来**。**待真机确认**：
+  `@ohos.net.webSocket` 握手能不能带自定义头。
 - 聊天那一格还欠一个桌面侧的口子：拿 `sessionId` 要用的 `/api/agents` 现在钥匙打不开（见交接规格 §8）。
 
 ## 工程落点
@@ -89,7 +109,7 @@ ArkTS Stage 模型工程，对应 Plobi 系统的**手机面**：
   已排除"PATH 没设好"——把 DevEco 自带 jbr（OpenJDK 25.0.2）加进 PATH 后 `where java` /
   `java -version` / node `spawnSync('java')` 全部成功，hvigor 自己的 java daemon 仍报同一句。
   **下一步该查的是 hvigor 怎么找 java**（或直接在 DevEco GUI 里构建），不是再折腾 PATH。
-- **仍未上真机**：设备上跑起来还没验过——这一条不许因为"编译通过"就升级。**但 401 的根因已在桌面这一边修掉并实测**（2026-10-04，真实局域网绑定上带钥匙读清单/day/pending = 200；见 `Docs/specs/handset-app.md`）。**设备侧还差两件事**：① 把请求从 `/api/agenda*` 换到 `/api/handset/agenda*`（`WP-APP-HANDSET`，不换必 401）；② 出包（停在 `PackageHap` 那条）。
+- **仍未上真机**：设备上跑起来还没验过——这一条不许因为"编译通过"就升级。**但 401 的根因已在桌面这一边修掉并实测**（2026-10-04，真实局域网绑定上带钥匙读清单/day/pending = 200；见 `Docs/specs/handset-app.md`）。**设备侧还差三件事**：① 把请求从 `/api/agenda*` 换到 `/api/handset/agenda*`（`WP-APP-HANDSET`，不换必 401）；② **加配对界面**换设备令牌（裁定 64 之后 `app_token` 打不开设备面，**裁定 68 之后它哪儿都不认——这一格是进门唯一通道**，见上）；③ 出包（停在 `PackageHap` 那条）。
 - 本机命令入口（这套路径只在 `Cycle` 上成立）：
   `node "D:\Software\DevEco Studio\tools\hvigor\bin\hvigorw.js" assembleHap --mode module -p product=default`，
   环境变量 `DEVECO_SDK_HOME=D:\Software\DevEco Studio\sdk`。
