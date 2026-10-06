@@ -2,7 +2,7 @@
 
 > WP-H2-APP-V0 · 独立 git 仓（Mac `/Users/ciel/Projects/Plobi/Plobi-Harmony-App`、Windows
 > `D:\Projects\Plobi\Plobi-Harmony-App` 各一份；分支 **`main`**，2026-10-03 实测，旧文档写的 `master` 已过时；
-> `git remote -v` 为空 = **无远端**），与 `Code` 仓解耦。两机真源口径未定（裁定 52.7）。
+> ~~`git remote -v` 为空 = 无远端~~ **2026-10-06 实测：本仓有远端 `origin` = `github.com/deyu-deng/Plobi-Harmony-App.git`，`main` 跟踪 `origin/main`，且有两次 `update by push` 记录（10-03 / 10-04）**——「无远端」与「只 commit 不 push」两句都已不是事实，是否继续推由用户定（`Docs/DECISIONS.md` §4 #15）。与 `Code` 仓解耦。两机真源口径未定（裁定 52.7）。
 > 鸿蒙 NEXT 平板：今日/明日清单 + 课前提醒 + 批待确认。
 >
 > **命名注**：本仓目录名与仓内标识在 R-038 全面改名（2026-09-26 起）之后才统一成 Plobi，
@@ -20,11 +20,22 @@ ArkTS Stage 模型工程，对应 Plobi 系统的**手机面**：
 
 ## 能力（H2 切片）
 
-1. **配对**：首启填桌面 LAN 地址；**钥匙不再手填**——桌面点「新码」出 6 位数字，App 一次
+> ⚠️ **2026-10-06 代码↔文档对账（Qoder，只读实查）：下面第 1、3 条在本仓代码里还没有实现，第 2、4 条走的是旧路径。**
+> 证据：`entry/src/main/ets/` 全 22 个 `.ets` 里 `handset` / `pair` / `redeem` **0 命中**（pattern：`handset|redeem|/pair`），
+> 实际请求打的是 `api/agenda`、`api/agenda/day`、`api/agenda/pending`、`api/agents`、`api/ws`（`AgendaApi.ets`、`AgentApi.ets`、`WsChat.ets`）；
+> `SettingsPage.ets:64-78,148-158` 仍是**手填钥匙**，而 `app_token` 已随裁定 68 整体退役。
+> 后端只把 `/api/handset/*` 注册进设备令牌门缝（`Code/plobi_cli/dashboard_auth/pairing.py:62-86`），
+> 其余 `/api/*` 要 SPA 会话（`Code/plobi_cli/web_server.py:788-791`）→ 这台 App 现在**进门就 401**。
+> 结论：**WP-APP-HANDSET 未完成**，本 README 之前按"已交付"写是错的。头名本身没问题（两边都发/读
+> `X-Plobi-Session-Token`，`Code/plobi_cli/dashboard_auth/headers.py:13`），旧名 `X-Vaelis-*` 全仓 0 残留。
+> 另两条待核（本次只读没跑起来验，别再当成事实抄）：WS 正文字段名、提醒 `triggerTimeInSeconds` 的单位。
+
+
+1. **配对**（**App 侧未实现**，见上方对账块）：首启填桌面 LAN 地址；**钥匙不再手填**——桌面点「新码」出 6 位数字，App 一次
    `POST /api/handset/pair/redeem` 换回**本机专属令牌**，入 Preferences，冷启动自动用
    （2026-10-05 裁定 64 改了这一块，见下面「请求头与钥匙」）
 2. **清单**：今日 / 明日 / 待确认 三段；`HH:MM–HH:MM 标题`，`end_at` 空只显示开始并标「未写结束」
-3. **批待确认**：点「确认 / 忽略」→ 调 `POST /api/handset/agenda/{id}/{confirm|dismiss}`
+3. **批待确认**：点「确认 / 忽略」→ 应调 `POST /api/handset/agenda/{id}/{confirm|dismiss}`（**App 现在打的还是 `/api/agenda/*` 旧路径**）
 4. **本地提醒**：每次同步后重排，触发 = `start_at − 15min`，上限 30 条/包（系统限制 1700002）
 5. **离线**：先渲染缓存 + 标「上次同步 HH:MM」；桌面关闭不白屏
 6. **冷启动 < 3s**：先 cache 后 network
