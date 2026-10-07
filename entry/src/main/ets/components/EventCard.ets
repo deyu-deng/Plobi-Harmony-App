@@ -1,4 +1,4 @@
-import { AgendaEvent } from '../model/AgendaEvent';
+import { AgendaEvent, kindLabelOf } from '../model/AgendaEvent';
 import { formatEventLine, formatHHmm } from '../utils/TimeFormat';
 
 @Component
@@ -25,7 +25,7 @@ export struct EventCard {
         .layoutWeight(1)
         .alignItems(HorizontalAlign.Start);
 
-        Text(this.event.kind)
+        Text(kindLabelOf(this.event.kind))
           .fontSize(11)
           .fontColor($r('sys.color.ohos_id_color_text_tertiary'))
           .padding({ left: 8, right: 8, top: 2, bottom: 2 })

@@ -3,7 +3,7 @@ import {
   mergeDay, markNow, buildTimeline, kindLabel,
   TimelineRow,
 } from '../main/ets/service/Timeline';
-import { AgendaEvent, Anchor, PlanItem } from '../main/ets/model/AgendaEvent';
+import { AgendaEvent, Anchor, PlanItem, kindLabelOf } from '../main/ets/model/AgendaEvent';
 
 interface TestEvidence {
   'kind': string;
@@ -368,6 +368,36 @@ export default function timelineTest(): void {
 
     it('empty kind → 事', 0, (): void => {
       expect(kindLabel(mkKindRow(''))).assertEqual('事');
+    });
+  });
+
+  describe('AgendaEvent.kindLabelOf', (): void => {
+    it('meeting → 会', 0, (): void => {
+      expect(kindLabelOf('meeting')).assertEqual('会');
+    });
+
+    it('task → 事', 0, (): void => {
+      expect(kindLabelOf('task')).assertEqual('事');
+    });
+
+    it('ddl → 截', 0, (): void => {
+      expect(kindLabelOf('ddl')).assertEqual('截');
+    });
+
+    it('class → 课', 0, (): void => {
+      expect(kindLabelOf('class')).assertEqual('课');
+    });
+
+    it('meal → 餐', 0, (): void => {
+      expect(kindLabelOf('meal')).assertEqual('餐');
+    });
+
+    it('unknown kind → raw kind', 0, (): void => {
+      expect(kindLabelOf('foo')).assertEqual('foo');
+    });
+
+    it('empty kind → 事', 0, (): void => {
+      expect(kindLabelOf('')).assertEqual('事');
     });
   });
 }

@@ -4,7 +4,9 @@ import { BusinessError } from '@kit.BasicServicesKit';
 import { AgendaEvent } from '../model/AgendaEvent';
 import {
   ScheduledReminder,
+  TMinusResult,
   pickRemindersForEvents,
+  tMinusFifteen,
 } from '../utils/ReminderCalculator';
 
 export { ScheduledReminder };
@@ -94,11 +96,11 @@ export async function rescheduleReminders(
   }
   for (let i: number = 0; i < picked.picked.length; i++) {
     const e: AgendaEvent = picked.picked[i];
-    const calc = pickRemindersForEvents([e], nowEpochSeconds);
-    if (calc.picked.length === 0) {
+    const calc: TMinusResult | undefined = tMinusFifteen(e.start_at, nowEpochSeconds);
+    if (calc === undefined || calc.alreadyPast) {
       continue;
     }
-    const req: reminderAgentManager.ReminderRequestTimer = buildReminderReq(e, Math.floor(Date.parse(e.start_at) / 1000) - 15 * 60);
+    const req: reminderAgentManager.ReminderRequestTimer = buildReminderReq(e, calc.triggerEpochSeconds);
     try {
       const id: number = await reminderAgentManager.publishReminder(req);
       scheduled.push({ eventId: e.id, reminderId: id });

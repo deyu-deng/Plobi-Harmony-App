@@ -10,7 +10,8 @@
  *   没有匹配则不标，不要假装下一节。
  * - 不抛、不猜；解析失败回退空 / 不标记。
  */
-import { AgendaEvent, Anchor, PlanItem } from '../model/AgendaEvent';
+import { AgendaEvent, Anchor, PlanItem, kindLabelOf } from '../model/AgendaEvent';
+import { padTwo } from '../utils/TimeFormat';
 
 export type TimelineSource = 'event' | 'plan' | 'anchor';
 
@@ -95,10 +96,7 @@ function startMinute(iso: string): string {
   if (isNaN(d.getTime())) {
     return '';
   }
-  const pad: (n: number) => string = (n: number): string => {
-    return n < 10 ? '0' + n.toString() : n.toString();
-  };
-  return pad(d.getHours()) + ':' + pad(d.getMinutes());
+  return padTwo(d.getHours()) + ':' + padTwo(d.getMinutes());
 }
 
 function rowDedupKeys(r: TimelineRow): string[] {
@@ -233,7 +231,7 @@ export function markNow(rows: TimelineRow[], nowEpochMs: number): TimelineRow[] 
 
 /**
  * 整页输入 → { today, tomorrow }。today 走合并 + 去重；
- * tomorrow 只放 events（/api/agenda/day 不返回明日 anchors）。
+ * tomorrow 只放 events（/api/handset/agenda/day 不返回明日 anchors）。
  * now 标记需 Date.now()，请在外面再 `markNow(today, Date.now())`。
  */
 export function buildTimeline(input: TimelineInput): TimelineOutput {
@@ -246,29 +244,10 @@ export function buildTimeline(input: TimelineInput): TimelineOutput {
   return { 'today': today, 'tomorrow': tomorrow };
 }
 
-/** 显示用 kind 标签（anchor → '作息'；已知映射；未知落回 kind 或 '事'）。 */
+/** 显示用 kind 标签（anchor → '作息'；其余委托 AgendaEvent.kindLabelOf，与卡片同源中文标签）。 */
 export function kindLabel(r: TimelineRow): string {
   if (r.source === 'anchor') {
     return '作息';
   }
-  const k: string = r.kind;
-  if (k === 'meeting') {
-    return '会';
-  }
-  if (k === 'task') {
-    return '事';
-  }
-  if (k === 'ddl') {
-    return '截';
-  }
-  if (k === 'class') {
-    return '课';
-  }
-  if (k === 'meal') {
-    return '餐';
-  }
-  if (k.length > 0) {
-    return k;
-  }
-  return '事';
+  return kindLabelOf(r.kind);
 }

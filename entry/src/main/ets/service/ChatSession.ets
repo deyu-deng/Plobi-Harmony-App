@@ -1,17 +1,7 @@
 import { AgentRow, L1Info } from '../model/ChatMessage';
 
-interface JsonObject {
-}
-
-function asObject(v: Object | undefined | null): JsonObject | undefined {
-  if (v === undefined || v === null) {
-    return undefined;
-  }
-  return v as JsonObject;
-}
-
 /**
- * 从 `GET /api/agents` 返回的 JSON 里挑出「总秘书 / L1」那条。
+ * 从 `GET /api/handset/agents` 返回的 JSON 里挑出「总秘书 / L1」那条。
  *
  * 任务书 §复用：
  *   「字段名以响应为准，不要猜出第二套 id」
@@ -22,7 +12,7 @@ function asObject(v: Object | undefined | null): JsonObject | undefined {
  *   2. 同上但用 `name` 字段推断（中文别名 '总秘书' / 'master' 等）
  *   3. sessionId 非空
  *
- * 当前 desktop 的 `/api/agents` 会**过滤**掉 L1（裁定 19）—— 此函数会返回
+ * 当前 desktop 的 `/api/handset/agents` 会**过滤**掉 L1（裁定 19）—— 此函数会返回
  * undefined，调用方按「电脑端还没打开平板对话通道」提示用户即可。
  */
 export function pickL1Row(json: string): L1Info | undefined {
@@ -101,7 +91,7 @@ function isL1Row(row: AgentRow): boolean {
 }
 
 /**
- * 把 `/api/agents/:id/overview` 返回里的 `sessionId` 抽出来。
+ * 把 `/api/handset/agents/:id/overview` 返回里的 `sessionId` 抽出来。
  * 用于「列表里没 L1 但 id 已知」的退化路径；裁定 19 当前 L1 不在列表里。
  */
 export function extractSessionIdFromOverview(json: string): string | undefined {
