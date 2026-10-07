@@ -20,22 +20,27 @@ ArkTS Stage 模型工程，对应 Plobi 系统的**手机面**：
 
 ## 能力（H2 切片）
 
-> ⚠️ **2026-10-06 代码↔文档对账（Qoder，只读实查）：下面第 1、3 条在本仓代码里还没有实现，第 2、4 条走的是旧路径。**
-> 证据：`entry/src/main/ets/` 全 22 个 `.ets` 里 `handset` / `pair` / `redeem` **0 命中**（pattern：`handset|redeem|/pair`），
-> 实际请求打的是 `api/agenda`、`api/agenda/day`、`api/agenda/pending`、`api/agents`、`api/ws`（`AgendaApi.ets`、`AgentApi.ets`、`WsChat.ets`）；
-> `SettingsPage.ets:64-78,148-158` 仍是**手填钥匙**，而 `app_token` 已随裁定 68 整体退役。
-> 后端只把 `/api/handset/*` 注册进设备令牌门缝（`Code/plobi_cli/dashboard_auth/pairing.py:62-86`），
-> 其余 `/api/*` 要 SPA 会话（`Code/plobi_cli/web_server.py:788-791`）→ 这台 App 现在**进门就 401**。
-> 结论：**WP-APP-HANDSET 未完成**，本 README 之前按"已交付"写是错的。头名本身没问题（两边都发/读
-> `X-Plobi-Session-Token`，`Code/plobi_cli/dashboard_auth/headers.py:13`），旧名 `X-Vaelis-*` 全仓 0 残留。
-> 另两条待核（本次只读没跑起来验，别再当成事实抄）：WS 正文字段名、提醒 `triggerTimeInSeconds` 的单位。
+> ✅ **2026-10-07 WP-APP-HANDSET 落地（DevEcode 实现 + Qoder 只读复核）：设备面切换与配对链路已进代码，但一次也没在设备上跑通过。**
+> 做到的：请求路径整体换到 `/api/handset/*`；`SettingsPage` 从手填钥匙改成 6 位码配对（`PairingApi`）；
+> 令牌头收敛到 `HttpKit.ets:11` 全仓单点；鉴权失败与 WS 握手失败统一引导「重新配对」。
+> 与后端源码逐条对上：`POST /api/handset/pair/redeem` 的 body `{code, deviceName}` 与响应
+> `{deviceId, token, scopes}`、401/429+`Retry-After` 见 `Code/plobi_cli/dashboard_auth/pairing_api.py:54-128`；
+> 免凭证白名单见 `public_paths.py:65`；头名见 `headers.py:13`；设备令牌认的路由清单见 `pairing.py:66-86`。
+> **没做到的（都不许当成已完成）**：① 配对→拉清单→批一条**从未真机走过**——2026-10-07 本机实测后端 8787
+> 无人监听、`devices.json = {}`、`PLOBI_LAN` 默认关，这条链路客观上还没被验证过；② 工程里**没有可执行的测试入口**
+> （`entry/src/test/` 缺 `List.test.ets` 聚合，`entry/src/ohosTest/` 是空目录，构建日志明写
+> `not found resModel json file in .../ohosTest/module.json5`），所以 `entry/src/test/` 下 10 个测试文件
+> **一次都没跑过**，只被静态检查扫到；③ WS 握手能否带自定义头仍未实测。
+> ④ `/api/handset/agents` 是**本仓自取的路径**——后端 `pairing.py:66-86` 里没注册、全仓 grep 0 命中，
+> 桌面补这个口之前聊天拉列表必然失败（已按用户裁定保留预切，并在 `Docs/specs/handset-app.md` §8 向桌面侧立案）。
+> 另两条仍待核：WS 正文字段名、提醒 `triggerTimeInSeconds` 的单位。
 
 
-1. **配对**（**App 侧未实现**，见上方对账块）：首启填桌面 LAN 地址；**钥匙不再手填**——桌面点「新码」出 6 位数字，App 一次
+1. **配对**（2026-10-07 已实现，**真机未验**）：首启填桌面 LAN 地址；**钥匙不再手填**——桌面点「新码」出 6 位数字，App 一次
    `POST /api/handset/pair/redeem` 换回**本机专属令牌**，入 Preferences，冷启动自动用
    （2026-10-05 裁定 64 改了这一块，见下面「请求头与钥匙」）
 2. **清单**：今日 / 明日 / 待确认 三段；`HH:MM–HH:MM 标题`，`end_at` 空只显示开始并标「未写结束」
-3. **批待确认**：点「确认 / 忽略」→ 应调 `POST /api/handset/agenda/{id}/{confirm|dismiss}`（**App 现在打的还是 `/api/agenda/*` 旧路径**）
+3. **批待确认**：点「确认 / 忽略」→ 调 `POST /api/handset/agenda/{id}/{confirm|dismiss}`（路径已于 2026-10-07 换到设备面）
 4. **本地提醒**：每次同步后重排，触发 = `start_at − 15min`，上限 30 条/包（系统限制 1700002）
 5. **离线**：先渲染缓存 + 标「上次同步 HH:MM」；桌面关闭不白屏
 6. **冷启动 < 3s**：先 cache 后 network
@@ -51,7 +56,7 @@ ArkTS Stage 模型工程，对应 Plobi 系统的**手机面**：
 - `@ohos.data.preferences`
 - 拒 RN / Flutter / Compose / WebView 壳
 
-## 公开 API（消费）——**本表已于 2026-10-04 过期，照下面这份改**
+## 公开 API（消费）——**本表 2026-10-07 起与代码一致**
 
 契约真源只有一份：[Docs/specs/handset-app.md](../Plobi-Desktop/Docs/specs/handset-app.md)
 （手机侧交接规格）与 [Docs/specs/api.md](../Plobi-Desktop/Docs/specs/api.md)「Plobi App / 设备面」。
@@ -67,8 +72,8 @@ ArkTS Stage 模型工程，对应 Plobi 系统的**手机面**：
 **为什么多了 `/api/handset` 这一段**（裁定 57）：桌面把一条 URL 注册成"钥匙认证"之后，
 那条 URL 就**只认设备钥匙**、浏览器登录态反被挡在外面；而 `/api/agenda` 是桌面看板
 每分钟都在调的。所以同一份 handler 挂两个门牌：浏览器留 `/api/agenda`，设备走
-`/api/handset/agenda`。**本仓现有代码还在打 `/api/agenda*`，在局域网绑定上必然 401**——
-这就是交接规格里的 `WP-APP-HANDSET`（第一刀）。
+`/api/handset/agenda`。**本仓代码从 2026-10-07 起打的才是这个前缀**（`WP-APP-HANDSET` 第一刀）——
+在此之前它一直打 `/api/agenda*`，在局域网绑定上必然 401。
 
 ### 请求头与钥匙（这段已由实测替换，旧结论作废）
 
@@ -101,7 +106,10 @@ ArkTS Stage 模型工程，对应 Plobi 系统的**手机面**：
   这一层，真机那一跳还没打，走的是同一条分支），无/错的被 **HTTP 403** 拒（旧文档写的"拒绝码 4401"
   不成立）。桌面撤销一台设备之后，它**下一次握手就进不来**。**待真机确认**：
   `@ohos.net.webSocket` 握手能不能带自定义头。
-- 聊天那一格还欠一个桌面侧的口子：拿 `sessionId` 要用的 `/api/agents` 现在钥匙打不开（见交接规格 §8）。
+- 聊天那一格还欠一个桌面侧的口子：拿 `sessionId` 要用的 agents 列表，桌面**至今没开设备面口**（交接规格 §8）。
+  2026-10-07 起本仓按用户裁定**预切到 `/api/handset/agents`**——这个名字是本仓自取的，后端
+  `pairing.py:66-86` 的设备令牌路由里没有它、全仓 grep 也是 0 命中，所以桌面照此实现之前**这一条必然失败**
+  （ChatPage 显示既有的「拉取总秘书列表失败，请检查桌面」）。
 
 ## 工程落点
 
@@ -114,17 +122,32 @@ ArkTS Stage 模型工程，对应 Plobi 系统的**手机面**：
 
 ## 当前状态
 
-- **ArkTS 编译已真跑通一次**（2026-10-03，Windows 机 `Cycle`，DevEco Studio 26.0 自带工具链）：
-  `ohpm install --all` 成功 → `hvigor assembleHap` 的 **`CompileArkTS` 通过（23.4s）**。
-- **但 HAP 还没出过货**：同一个构建停在 `:entry:default@PackageHap`，报 **`spawn java ENOENT`**。
-  已排除"PATH 没设好"——把 DevEco 自带 jbr（OpenJDK 25.0.2）加进 PATH 后 `where java` /
-  `java -version` / node `spawnSync('java')` 全部成功，hvigor 自己的 java daemon 仍报同一句。
-  **下一步该查的是 hvigor 怎么找 java**（或直接在 DevEco GUI 里构建），不是再折腾 PATH。
-- **仍未上真机**：设备上跑起来还没验过——这一条不许因为"编译通过"就升级。**但 401 的根因已在桌面这一边修掉并实测**（2026-10-04，真实局域网绑定上带钥匙读清单/day/pending = 200；见 `Docs/specs/handset-app.md`）。**设备侧还差三件事**：① 把请求从 `/api/agenda*` 换到 `/api/handset/agenda*`（`WP-APP-HANDSET`，不换必 401）；② **加配对界面**换设备令牌（裁定 64 之后 `app_token` 打不开设备面，**裁定 68 之后它哪儿都不认——这一格是进门唯一通道**，见上）；③ 出包（停在 `PackageHap` 那条）。
+- **出包链路通了**（2026-10-07）：`hvigor assembleHap` 全绿，`:entry:default@PackageHap` 不再报
+  **`spawn java ENOENT`**，产物落在 `entry/build/default/outputs/default/`（`entry-default.hap` /
+  `entry-default-unsigned.hap`）与 `build/outputs/default/Plobi-Harmony-App-default-unsigned.app`。
+  Qoder 用文档里那条命令行**干净重跑过一次**（`--no-daemon`，1min59s，33 任务）确认不是 IDE 独享的现象。
+  **根因没查清**——本 WP 的代码改动里没有任何 java 相关配置，所以这条只能记成「不再复现」，不能记成「已解决」；
+  原先那条「下一步该查 hvigor 怎么找 java」的待办**撤掉**。
+- **包还不能装**：`build-profile.json5:3` 是 `"signingConfigs": []`，构建日志明写
+  `WARN: Will skip sign 'hos_hap'. No signingConfigs profile is configured`——unsigned HAP 装不上真机，
+  这一步需要开发者证书/自动签名，**不在本 WP 范围**。
+- **仍未上真机，一次也没有**：设备上跑起来还没验过——这一条不许因为"编译通过"或"代码已对齐契约"就升级。
+  401 的根因早在桌面那侧修掉并实测过（2026-10-04，真实局域网绑定上带钥匙读清单/day/pending = 200；
+  见 `Docs/specs/handset-app.md`），**设备侧那三件事已就位但没有一件被真机验证**：
+  ① 请求换到 `/api/handset/agenda*`；② 配对界面换设备令牌（裁定 68 之后这是进门唯一通道）；③ 出包。
+  **现在挡在验收前面的两格**：桌面后端得开 LAN 绑定（2026-10-07 本机实测 `PLOBI_LAN` 未开、8787 无人监听、
+  `devices.json = {}`），以及上面那条签名。
+- **测试没有可执行的入口**：`entry/src/test/` 下十个 `.test.ets` 都只写了 `export default function xxxTest()`，
+  **缺聚合用的 `List.test.ets`**；`entry/src/ohosTest/` 是空目录（构建日志：`not found resModel json file in
+  .../ohosTest/module.json5`），`entry/build-profile.json5` 也只声明了 `default` 与 `ohosTest` 两个 target。
+  所以「单测全绿」这句**从来没有证据**，新加的用例也一样没跑过——补这一格要在能真机/模拟器执行的前提下来，
+  别只把一个跑不通的聚合文件签进去当作完成。
 - 本机命令入口（这套路径只在 `Cycle` 上成立）：
   `node "D:\Software\DevEco Studio\tools\hvigor\bin\hvigorw.js" assembleHap --mode module -p product=default`，
   环境变量 `DEVECO_SDK_HOME=D:\Software\DevEco Studio\sdk`。
-- 以上两条 `Docs/PROGRESS.md` 有对应流水，勿在本 README 里升级成「已验收」
+- 以上各条在本仓提交里成立，但 `Docs/PROGRESS.md` 那一行**还没登记**（2026-10-07 写这段时 `Docs` 工作区被其他
+  会话占着，六个文件是脏的，按 `ROADMAP §3.4` 不能替别人签）；`ROADMAP §1.2` 与 `§4` 的 `WP-APP-HANDSET` 行、
+  `specs/handset-app.md §6` 那条「PackageHap 卡 java」同样待改。**别把这份 README 当成已验收**
 
 ## 怎么用 DevEco 打开
 

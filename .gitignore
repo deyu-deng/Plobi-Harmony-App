@@ -7,3 +7,8 @@ build/
 .DS_Store
 *.har
 entry/src/main/resources/base/media/app_icon.png
+
+# AOCI agent host integration (machine-bound; do not commit)
+opencode.json
+opencode.json.backup.*
+deveco.jsonc
