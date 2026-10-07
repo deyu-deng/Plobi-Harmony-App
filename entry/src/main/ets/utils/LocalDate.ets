@@ -1,3 +1,5 @@
+import { padTwo } from './TimeFormat';
+
 /**
  * 把 Date 映成本地日历日的 YYYY-MM-DD。
  *
@@ -6,13 +8,10 @@
  * 任务书 WP-H2-DAY + 裁定 33.5 同口径。
  */
 export function localDateIso(now: Date): string {
-  const pad: (n: number) => string = (n: number): string => {
-    return n < 10 ? '0' + n.toString() : n.toString();
-  };
   const y: number = now.getFullYear();
   const m: number = now.getMonth() + 1;
   const d: number = now.getDate();
-  return pad(y) + '-' + pad(m) + '-' + pad(d);
+  return padTwo(y) + '-' + padTwo(m) + '-' + padTwo(d);
 }
 
 /**
@@ -20,6 +19,15 @@ export function localDateIso(now: Date): string {
  */
 export function todayLocalIso(): string {
   return localDateIso(new Date());
+}
+
+/**
+ * 「明日」= 今日的本地日历日 + 1 天。
+ * 用 Date 构造器的日期进位处理跨月/跨年（如 1 月 32 日 → 2 月 1 日）。
+ */
+export function tomorrowLocalIso(): string {
+  const now: Date = new Date();
+  return localDateIso(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1));
 }
 
 /**

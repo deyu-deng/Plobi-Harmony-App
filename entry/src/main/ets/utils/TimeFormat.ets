@@ -3,9 +3,13 @@
  * 不补 1 小时、不编 9:00（裁定 27 + 25.1 + 任务书 §冻结契约）。
  */
 
-const PAD_TWO: (n: number) => string = (n: number): string => {
+/**
+ * 数字补零到两位（0–9 → '00'–'09'，两位数原样）。
+ * 时间/日期补零的全仓单点实现（FR-012）。
+ */
+export function padTwo(n: number): string {
   return n < 10 ? '0' + n.toString() : n.toString();
-};
+}
 
 /**
  * 把 ISO 字符串解析为本地 Date；解析失败返回 undefined（不抛、不猜）。
@@ -26,20 +30,41 @@ export function formatHHmm(iso: string): string {
   if (d === undefined) {
     return '--:--';
   }
-  return PAD_TWO(d.getHours()) + ':' + PAD_TWO(d.getMinutes());
+  return padTwo(d.getHours()) + ':' + padTwo(d.getMinutes());
+}
+
+/**
+ * 仅时间段文本：「HH:MM–HH:MM」或「HH:MM · 未写结束」。
+ * 开始时间解析失败 → '--:--'；结束时间缺失/为空/解析失败 → 不编造，按「未写结束」处理。
+ */
+export function formatTimeRange(startIso: string, endIso?: string): string {
+  const start: Date | undefined = parseLocalTime(startIso);
+  if (start === undefined) {
+    return '--:--';
+  }
+  const startText: string = padTwo(start.getHours()) + ':' + padTwo(start.getMinutes());
+  const endRaw: string | undefined = endIso;
+  if (endRaw === undefined || endRaw.length === 0) {
+    return startText + ' · 未写结束';
+  }
+  const end: Date | undefined = parseLocalTime(endRaw);
+  if (end === undefined) {
+    return startText + ' · 未写结束';
+  }
+  return startText + '–' + padTwo(end.getHours()) + ':' + padTwo(end.getMinutes());
+}
+
+/**
+ * 当前本地时刻的「HH:MM」（时间线「现在」行）。
+ */
+export function formatLocalNowHHmm(): string {
+  const now: Date = new Date();
+  return padTwo(now.getHours()) + ':' + padTwo(now.getMinutes());
 }
 
 /**
  * 一行「HH:MM 标题」或「HH:MM–HH:MM 标题」或「HH:MM · 未写结束 标题」。
  */
 export function formatEventLine(title: string, startIso: string, endIso?: string): string {
-  const start: string = formatHHmm(startIso);
-  const endRaw: string | undefined = endIso;
-  let timePart: string;
-  if (endRaw !== undefined && endRaw.length > 0) {
-    timePart = start + '–' + formatHHmm(endRaw);
-  } else {
-    timePart = start + ' · 未写结束';
-  }
-  return timePart + '  ' + title;
+  return formatTimeRange(startIso, endIso) + '  ' + title;
 }

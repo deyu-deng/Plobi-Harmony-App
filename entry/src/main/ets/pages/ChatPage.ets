@@ -1,5 +1,6 @@
 import { ChatMessage, L1Info } from '../model/ChatMessage';
-import { fetchAgents, ApiResultAgents } from '../service/AgentApi';
+import { fetchAgents, AgentRowRaw } from '../service/AgentApi';
+import { ApiResult } from '../service/HttpKit';
 import { pickL1Row } from '../service/ChatSession';
 import { sendPromptOverWs, ChatSendOutcome } from '../service/WsChat';
 import { buildWsUrl } from '../service/WsUrl';
@@ -10,8 +11,8 @@ import {
   PREF_KEY_L1_INFO,
   PREF_KEY_CHAT_HISTORY,
 } from '../model/AppConfig';
+import { formatHHmm } from '../utils/TimeFormat';
 
-const HEADER_TOKEN: string = 'X-Plobi-Session-Token';
 const MAX_HISTORY: number = 100;
 
 @Entry
@@ -148,7 +149,7 @@ struct ChatPage {
           .backgroundColor(item.role === 'user' ? '#1A8C4A' : $r('sys.color.ohos_id_color_card_bg'))
           .maxLines(500)
           .textOverflow({ overflow: TextOverflow.Ellipsis });
-        Text(item.role === 'user' ? '我' : this.l1Name + ' · ' + formatLocalTime(item.createdAtIso))
+        Text(item.role === 'user' ? '我' : this.l1Name + ' · ' + formatHHmm(item.createdAtIso))
           .fontSize(11)
           .fontColor($r('sys.color.ohos_id_color_text_tertiary'))
           .margin({ top: 4 });
@@ -213,7 +214,7 @@ struct ChatPage {
       this.l1MissingText = '请先在「设置」配对';
       return;
     }
-    const res: ApiResultAgents = await fetchAgents(baseUrl, token);
+    const res: ApiResult<AgentRowRaw[]> = await fetchAgents(baseUrl, token);
     if (!res.ok || res.data === undefined) {
       this.l1MissingText = '拉取总秘书列表失败，请检查桌面';
       return;
@@ -319,17 +320,6 @@ struct ChatPage {
 
 function makeId(prefix: string): string {
   return prefix + '-' + String(Math.floor(Math.random() * 1e9));
-}
-
-function formatLocalTime(iso: string): string {
-  const d: Date = new Date(iso);
-  if (isNaN(d.getTime())) {
-    return '--:--';
-  }
-  const pad: (n: number) => string = (n: number): string => {
-    return n < 10 ? '0' + n.toString() : n.toString();
-  };
-  return pad(d.getHours()) + ':' + pad(d.getMinutes());
 }
 
 interface L1InfoStored {

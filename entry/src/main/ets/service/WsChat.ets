@@ -2,9 +2,9 @@ import { webSocket } from '@kit.NetworkKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { buildWsUrl } from './WsUrl';
 import { ApiFailure, classifyConnectFailure, classifyHttpFailure } from './ApiError';
+import { HEADER_TOKEN } from './HttpKit';
 import { ChatEvent, ChatEventKind, ChatSubmitParams } from '../model/ChatMessage';
 
-const HEADER_TOKEN: string = 'X-Plobi-Session-Token';
 const WS_CLOSE_TOKEN_REJECTED: number = 4401;
 const REQUEST_TIMEOUT_MS: number = 30000;
 
@@ -15,8 +15,25 @@ export interface ChatSendOutcome {
   reason?: string;
 }
 
-interface RequestHeader {
-  'X-Plobi-Session-Token': string;
+/**
+ * 连接阶段（open 前）明确属于网络问题的消息特征。
+ * 注意不含 'connect failed'：@ohos.net.webSocket 把升级被拒（如令牌错的 HTTP 403）
+ * 也报成「Websocket connect failed.」，无法与网络失败区分（plan.md D8）。
+ */
+const WS_CONNECT_NETWORK_KEYS: ReadonlyArray<string> = [
+  'timeout', 'timed out', 'etimedout',
+  'refused', 'connection refused', 'unable to connect',
+  'unreachable', 'network unreachable', 'no route', 'enotfound', 'ehostunreach',
+];
+
+function isWsNetworkError(message: string): boolean {
+  const low: string = message.toLowerCase();
+  for (let i: number = 0; i < WS_CONNECT_NETWORK_KEYS.length; i++) {
+    if (low.indexOf(WS_CONNECT_NETWORK_KEYS[i]) >= 0) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function classifyWsClose(code: number): ApiFailure | undefined {
@@ -24,18 +41,30 @@ function classifyWsClose(code: number): ApiFailure | undefined {
     return {
       'kind': 'token-rejected',
       'short': '令牌错（WS 4401）',
-      'hint': '令牌错：在桌面运行 python scripts/plobi/doctor.py --print-app-token 重新填',
+      'hint': '令牌失效：到「设置」里重新配对',
     };
   }
   return {
     'kind': 'http-error',
     'short': 'WS 连接关闭（' + String(code) + '）',
-    'hint': '电脑端还没打开平板对话通道，或服务暂时不可用',
+    'hint': '电脑端还没打开平板对话通道，或服务暂时不可用；或令牌失效，到设置重新配对',
   };
 }
 
+/**
+ * 连接阶段失败归类（plan.md D8）：明确网络类消息保留 ApiError 网络归因；
+ * 其余（含「Websocket connect failed」签名，无法与令牌被拒的升级失败区分）
+ * 归 token-rejected，hint 覆盖令牌失效 / 通道未开 / 桌面没开机三种可能。
+ */
 function classifyWsConnectError(err: BusinessError): ApiFailure {
-  return classifyConnectFailure(err.message);
+  if (isWsNetworkError(err.message)) {
+    return classifyConnectFailure(err.message);
+  }
+  return {
+    'kind': 'token-rejected',
+    'short': '对话通道握手失败',
+    'hint': '令牌可能已失效，到「设置」里重新配对；或电脑端还没打开平板对话通道；或桌面没开机',
+  };
 }
 
 function classifyWsHttpError(code: number): ApiFailure {
@@ -145,7 +174,8 @@ function buildSubmitFrame(params: ChatSubmitParams, rid: number): string {
 
 /**
  * 一次性发一话 + 等 `message.complete` 或错误。
- * 连接 / 鉴权失败 → 复用 ApiError 三分类。
+ * 连接阶段失败按 plan.md D8 归类：明确网络类消息走 ApiError 网络归因，其余归
+ * token-rejected（webSocket 库把升级被拒也报成「Websocket connect failed」，无法区分）。
  * token 仅在 `connect` 的 header，不进 URL（任务书 §复用）。
  */
 export function sendPromptOverWs(
@@ -156,9 +186,8 @@ export function sendPromptOverWs(
   return new Promise<ChatSendOutcome>((resolve: (v: ChatSendOutcome) => void): void => {
     const ws: webSocket.WebSocket = webSocket.createWebSocket();
     const wsUrl: string = buildWsUrl(baseUrl);
-    const header: RequestHeader = {
-      'X-Plobi-Session-Token': token,
-    };
+    const header: Record<string, string> = {};
+    header[HEADER_TOKEN] = token;
     let accumulated: string = '';
     let done: boolean = false;
     let timeoutHandle: number = -1;
@@ -201,7 +230,7 @@ export function sendPromptOverWs(
             finalize({
               ok: false,
               fullText: accumulated,
-              failure: classifyWsConnectError(sendErr ?? { code: 0, message: reason, name: '', stack: '' }),
+              failure: classifyConnectFailure(reason),
               reason: reason,
             });
           }
@@ -211,7 +240,7 @@ export function sendPromptOverWs(
         finalize({
           ok: false,
           fullText: accumulated,
-          failure: classifyWsConnectError(err),
+          failure: classifyConnectFailure(err.message),
           reason: err.message,
         });
       }
@@ -262,7 +291,7 @@ export function sendPromptOverWs(
         });
         return;
       }
-      const failure: ApiFailure = code >= 0 ? (classifyWsClose(code) ?? classifyWsHttpError(code)) : classifyWsConnectError({ code: code, message: 'ws closed', name: '', stack: '' });
+      const failure: ApiFailure = code >= 0 ? (classifyWsClose(code) ?? classifyWsHttpError(code)) : classifyConnectFailure('ws closed');
       finalize({
         ok: false,
         fullText: accumulated,
@@ -283,7 +312,7 @@ export function sendPromptOverWs(
         finalize({
           ok: false,
           fullText: accumulated,
-          failure: classifyWsConnectError(err),
+          failure: classifyConnectFailure(err.message),
           reason: err.message,
         });
       }
@@ -303,7 +332,7 @@ export function sendPromptOverWs(
     }, REQUEST_TIMEOUT_MS);
 
     try {
-      ws.connect(wsUrl, { 'header': header as Object as Record<string, string> }, (err: BusinessError, _value: boolean): void => {
+      ws.connect(wsUrl, { 'header': header }, (err: BusinessError, _value: boolean): void => {
         if (err) {
           finalize({
             ok: false,

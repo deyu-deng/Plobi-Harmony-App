@@ -10,9 +10,11 @@ import {
   PREF_KEY_CACHED_DAY,
   PREF_KEY_LAST_SYNC,
   PREF_KEY_TOKEN,
+  PREF_KEY_API_VERSION,
 } from '../model/AppConfig';
 import { ensureNotificationEnabled, rescheduleReminders, ScheduledReminder } from '../service/ReminderService';
-import { todayLocalIso, localDateOfIso } from '../utils/LocalDate';
+import { todayLocalIso, tomorrowLocalIso } from '../utils/LocalDate';
+import { formatTimeRange, formatLocalNowHHmm } from '../utils/TimeFormat';
 import { parseDayPayload } from '../service/DayParser';
 import { TimelineRow, buildTimeline, markNow, kindLabel } from '../service/Timeline';
 
@@ -270,7 +272,7 @@ struct Index {
         }
         .width('100%')
         .alignItems(VerticalAlign.Center);
-        Text(formatLine(row.start_at, row.end_at))
+        Text(formatTimeRange(row.start_at, row.end_at))
           .fontSize(13)
           .fontColor($r('sys.color.ohos_id_color_text_secondary'))
           .margin({ top: 4 });
@@ -355,7 +357,7 @@ struct Index {
     const baseUrl: string | undefined = getStringSync(PREF_KEY_BASE_URL);
     const token: string | undefined = getStringSync(PREF_KEY_TOKEN);
     if (baseUrl === undefined || token === undefined || baseUrl.length === 0 || token.length === 0) {
-      this.topError = '请先在「设置」里填桌面地址和令牌';
+      this.topError = '请先在「设置」里配对';
       this.isRefreshing = false;
       return;
     }
@@ -395,12 +397,12 @@ struct Index {
       await putString(PREF_KEY_CACHED_DAY, '');
     }
     this.rebuildTimeline();
-    const now: string = formatNow();
+    const now: string = formatLocalNowHHmm();
     this.lastSyncText = '上次同步 ' + now;
     await putString(PREF_KEY_CACHED_EVENTS, JSON.stringify(all));
     await putString(PREF_KEY_CACHED_PENDING, JSON.stringify(this.pendingEvents));
     await putString(PREF_KEY_LAST_SYNC, now);
-    await putNumber('plobi.apiVersion', eventsRes.apiVersion ?? 0);
+    await putNumber(PREF_KEY_API_VERSION, eventsRes.apiVersion ?? 0);
     if (eventsRes.versionNotice !== undefined) {
       this.versionNotice = eventsRes.versionNotice.short;
       this.versionHint = eventsRes.versionNotice.hint;
@@ -472,8 +474,8 @@ function parseEventsJson(raw: string): ParsedEvents {
       return { today: [], tomorrow: [] };
     }
     const arr: Object[] = obj as Object[];
-    const today: string = isoDay(0);
-    const tomorrow: string = isoDay(1);
+    const today: string = todayLocalIso();
+    const tomorrow: string = tomorrowLocalIso();
     const todayList: AgendaEvent[] = [];
     const tomorrowList: AgendaEvent[] = [];
     for (let i: number = 0; i < arr.length; i++) {
@@ -515,44 +517,4 @@ function filterByDate(events: ReadonlyArray<AgendaEvent>, dayIso: string): Agend
     return a.start_at.localeCompare(b.start_at);
   });
   return out;
-}
-
-function formatLine(startIso: string, endIso?: string): string {
-  const start: string = hhmm(startIso);
-  if (endIso !== undefined && endIso.length > 0) {
-    return start + '–' + hhmm(endIso);
-  }
-  return start + ' · 未写结束';
-}
-
-function hhmm(iso: string): string {
-  const d: Date = new Date(iso);
-  if (isNaN(d.getTime())) {
-    return '--:--';
-  }
-  const pad: (n: number) => string = (n: number): string => {
-    return n < 10 ? '0' + n.toString() : n.toString();
-  };
-  return pad(d.getHours()) + ':' + pad(d.getMinutes());
-}
-
-function isoDay(offsetDays: number): string {
-  const d: Date = new Date();
-  d.setDate(d.getDate() + offsetDays);
-  const pad: (n: number) => string = (n: number): string => {
-    return n < 10 ? '0' + n.toString() : n.toString();
-  };
-  return pad(d.getFullYear()) + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
-}
-
-function tomorrowLocalIso(): string {
-  return isoDay(1);
-}
-
-function formatNow(): string {
-  const d: Date = new Date();
-  const pad: (n: number) => string = (n: number): string => {
-    return n < 10 ? '0' + n.toString() : n.toString();
-  };
-  return pad(d.getHours()) + ':' + pad(d.getMinutes());
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@ohos/hypium';
-import { localDateIso, todayLocalIso, localDateOfIso } from '../main/ets/utils/LocalDate';
+import { localDateIso, todayLocalIso, tomorrowLocalIso, localDateOfIso } from '../main/ets/utils/LocalDate';
 
 export default function localDateTest(): void {
   describe('LocalDate.localDateIso', (): void => {
@@ -25,6 +25,24 @@ export default function localDateTest(): void {
       const now: Date = new Date();
       const expected: string = localDateIso(now);
       expect(todayLocalIso()).assertEqual(expected);
+    });
+  });
+
+  describe('LocalDate.tomorrowLocalIso', (): void => {
+    it('is exactly one local day after today', 0, (): void => {
+      const now: Date = new Date();
+      const expected: string = localDateIso(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1));
+      expect(tomorrowLocalIso()).assertEqual(expected);
+    });
+
+    it('matches YYYY-MM-DD shape', 0, (): void => {
+      const re: RegExp = new RegExp('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+      expect(re.test(tomorrowLocalIso())).assertTrue();
+    });
+
+    it('month rollover via Date constructor day overflow', 0, (): void => {
+      // tomorrowLocalIso 的同款机制：Date 构造器把 1 月 32 日进位为 2 月 1 日。
+      expect(localDateIso(new Date(2026, 0, 32))).assertEqual('2026-02-01');
     });
   });
 

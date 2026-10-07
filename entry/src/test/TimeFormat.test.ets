@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@ohos/hypium';
-import { formatEventLine, formatHHmm, parseLocalTime } from '../main/ets/utils/TimeFormat';
+import { formatEventLine, formatHHmm, formatLocalNowHHmm, formatTimeRange, padTwo, parseLocalTime } from '../main/ets/utils/TimeFormat';
 
 export default function timeFormatTest(): void {
   describe('TimeFormat', (): void => {
@@ -43,13 +43,55 @@ export default function timeFormatTest(): void {
       expect(line).assertContain('未写结束');
       expect(line).assertContain('组会');
       // 不准补 1 小时 / 不准编 9:00
-      expect(line).assertContain('11:00') === false;
+      expect(line.indexOf('11:00')).assertEqual(-1);
     });
 
     it('formatEventLine with empty end_at does not fabricate', 0, (): void => {
       const line: string = formatEventLine('任务', '2026-09-14T15:00:00', '');
       expect(line).assertContain('15:00');
       expect(line).assertContain('未写结束');
+    });
+  });
+
+  describe('TimeFormat.padTwo', (): void => {
+    it('pads single digit to two chars', 0, (): void => {
+      expect(padTwo(0)).assertEqual('00');
+      expect(padTwo(9)).assertEqual('09');
+    });
+
+    it('keeps two-digit numbers as-is', 0, (): void => {
+      expect(padTwo(10)).assertEqual('10');
+      expect(padTwo(59)).assertEqual('59');
+    });
+  });
+
+  describe('TimeFormat.formatTimeRange', (): void => {
+    it('with end renders start–end', 0, (): void => {
+      expect(formatTimeRange('2026-09-14T09:00:00', '2026-09-14T10:40:00')).assertEqual('09:00–10:40');
+    });
+
+    it('without end renders 未写结束', 0, (): void => {
+      expect(formatTimeRange('2026-09-14T10:00:00', undefined)).assertEqual('10:00 · 未写结束');
+    });
+
+    it('empty end renders 未写结束', 0, (): void => {
+      expect(formatTimeRange('2026-09-14T10:00:00', '')).assertEqual('10:00 · 未写结束');
+    });
+
+    it('bad start ISO renders --:--', 0, (): void => {
+      expect(formatTimeRange('not-a-date', '2026-09-14T10:40:00')).assertEqual('--:--');
+      expect(formatTimeRange('', undefined)).assertEqual('--:--');
+    });
+
+    it('bad end ISO falls back to 未写结束 (no fabricated time)', 0, (): void => {
+      expect(formatTimeRange('2026-09-14T10:00:00', 'garbage')).assertEqual('10:00 · 未写结束');
+    });
+  });
+
+  describe('TimeFormat.formatLocalNowHHmm', (): void => {
+    it('matches HH:MM shape', 0, (): void => {
+      const re: RegExp = new RegExp('^([01][0-9]|2[0-3]):[0-5][0-9]$');
+      expect(re.test(formatLocalNowHHmm())).assertTrue();
     });
   });
 }

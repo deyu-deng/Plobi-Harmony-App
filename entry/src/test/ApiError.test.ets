@@ -2,7 +2,9 @@ import { describe, it, expect } from '@ohos/hypium';
 import {
   classifyConnectFailure,
   classifyHttpFailure,
+  classifyPairFailure,
   classifyVersion,
+  formatWaitSeconds,
   serverMajorVersion,
 } from '../main/ets/service/ApiError';
 
@@ -52,7 +54,7 @@ export default function apiErrorTest(): void {
       const f = classifyHttpFailure(401, 'unauthorized');
       expect(f.kind).assertEqual('token-rejected');
       expect(f.short).assertContain('令牌');
-      expect(f.hint).assertContain('doctor');
+      expect(f.hint).assertContain('重新配对');
     });
 
     it('403 maps to token-rejected', 0, (): void => {
@@ -135,6 +137,52 @@ export default function apiErrorTest(): void {
 
     it('empty returns undefined', 0, (): void => {
       expect(serverMajorVersion('')).assertEqual(undefined);
+    });
+  });
+
+  describe('ApiError.classifyPairFailure', (): void => {
+    it('401 maps to pair-code-rejected', 0, (): void => {
+      const f = classifyPairFailure(401, undefined);
+      expect(f.kind).assertEqual('pair-code-rejected');
+      expect(f.short).assertContain('重新开一个码');
+      expect(f.hint).assertContain('新码');
+    });
+
+    it('429 with retryAfterSeconds maps to pair-locked with wait text', 0, (): void => {
+      const f = classifyPairFailure(429, 1800);
+      expect(f.kind).assertEqual('pair-locked');
+      expect(f.short).assertContain('30 分钟');
+      expect(f.retryAfterSeconds).assertEqual(1800);
+    });
+
+    it('429 without retryAfterSeconds falls back to about one hour', 0, (): void => {
+      const f = classifyPairFailure(429, undefined);
+      expect(f.kind).assertEqual('pair-locked');
+      expect(f.short).assertContain('约 1 小时');
+      expect(f.retryAfterSeconds).assertEqual(undefined);
+    });
+
+    it('other statuses delegate to classifyHttpFailure', 0, (): void => {
+      const f = classifyPairFailure(404, undefined);
+      expect(f.kind).assertEqual('http-error');
+    });
+  });
+
+  describe('ApiError.formatWaitSeconds', (): void => {
+    it('under a minute shows seconds', 0, (): void => {
+      expect(formatWaitSeconds(30)).assertEqual('30 秒');
+    });
+
+    it('minutes round up', 0, (): void => {
+      expect(formatWaitSeconds(90)).assertEqual('约 2 分钟');
+    });
+
+    it('hours round to nearest', 0, (): void => {
+      expect(formatWaitSeconds(7200)).assertEqual('约 2 小时');
+    });
+
+    it('missing falls back to about one hour', 0, (): void => {
+      expect(formatWaitSeconds(undefined)).assertEqual('约 1 小时');
     });
   });
 }

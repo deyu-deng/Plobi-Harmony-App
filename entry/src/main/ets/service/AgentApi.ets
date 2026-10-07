@@ -1,7 +1,6 @@
 import { http } from '@kit.NetworkKit';
-import { BusinessError } from '@kit.BasicServicesKit';
-import { DEFAULT_API_VERSION } from '../model/AppConfig';
-import { ApiFailure, classifyConnectFailure, classifyHttpFailure, classifyVersion, serverMajorVersion } from './ApiError';
+import { ApiResult, doRequest } from './HttpKit';
+import { ApiFailure } from './ApiError';
 
 export interface AgentRowRaw {
   id: string;
@@ -10,131 +9,31 @@ export interface AgentRowRaw {
   sessionId?: string;
 }
 
-export interface ApiResultAgents {
-  ok: boolean;
-  status: number;
-  data?: AgentRowRaw[];
-  serverMajor?: number;
-  expectedMajor: number;
-  failure?: ApiFailure;
-  versionNotice?: ApiFailure;
-  reason?: string;
-}
-
-interface RequestHeader {
-  'Accept': string;
-  'X-Plobi-Session-Token': string;
-  'X-Plobi-Api-Version': string;
-}
-
-const HEADER_TOKEN: string = 'X-Plobi-Session-Token';
-const HEADER_API_VERSION: string = 'X-Plobi-Api-Version';
-const TRAILING_SLASH_RE: RegExp = new RegExp('/+$');
-
-function trimTrailingSlash(s: string): string {
-  return s.replace(TRAILING_SLASH_RE, '');
-}
-
-function buildUrl(baseUrl: string, path: string): string {
-  return trimTrailingSlash(baseUrl) + path;
-}
-
-function buildFailure(status: number, reason: string | undefined): ApiFailure {
-  if (status === 0) {
-    return classifyConnectFailure(reason);
-  }
-  return classifyHttpFailure(status, reason);
-}
-
-function readHeader(headerObj: Object, key: string): string | undefined {
-  const rec: Record<string, Object> = headerObj as Record<string, Object>;
-  const v: Object | undefined = rec[key];
-  if (v === undefined) {
-    return undefined;
-  }
-  return String(v);
-}
-
-export function fetchAgents(baseUrl: string, token: string): Promise<ApiResultAgents> {
-  return new Promise<ApiResultAgents>((resolve: (v: ApiResultAgents) => void): void => {
-    const req: http.HttpRequest = http.createHttp();
-    const header: RequestHeader = {
-      'Accept': 'application/json',
-      'X-Plobi-Session-Token': token,
-      'X-Plobi-Api-Version': String(DEFAULT_API_VERSION),
-    };
-    req.request(
-      buildUrl(baseUrl, '/api/agents'),
-      {
-        method: http.RequestMethod.GET,
-        header: header as Object as Record<string, string>,
-        readTimeout: 5000,
-        connectTimeout: 5000,
-        expectDataType: http.HttpDataType.STRING,
-      },
-      (err: BusinessError, resp: http.HttpResponse): void => {
-        req.destroy();
-        if (err) {
-          const failure: ApiFailure = buildFailure(0, err.message);
-          const out: ApiResultAgents = {
-            ok: false,
-            status: 0,
-            expectedMajor: DEFAULT_API_VERSION,
-            failure: failure,
-            reason: err.message,
-          };
-          resolve(out);
-          return;
-        }
-        const code: number = resp.responseCode;
-        const raw: string = typeof resp.result === 'string' ? resp.result : '';
-        const rawVersion: string | undefined = readHeader(resp.header, HEADER_API_VERSION.toLowerCase());
-        const major: number | undefined = serverMajorVersion(rawVersion);
-        const versionNotice: ApiFailure | undefined = classifyVersion(major, DEFAULT_API_VERSION);
-        if (code < 200 || code >= 300) {
-          const failure: ApiFailure = buildFailure(code, raw);
-          const out: ApiResultAgents = {
-            ok: false,
-            status: code,
-            serverMajor: major,
-            expectedMajor: DEFAULT_API_VERSION,
-            failure: failure,
-            versionNotice: versionNotice,
-            reason: raw,
-          };
-          resolve(out);
-          return;
-        }
-        let parsed: AgentRowRaw[] | undefined = undefined;
-        if (raw.length > 0) {
-          try {
-            const obj: Object = JSON.parse(raw) as Object;
-            if (Array.isArray(obj)) {
-              parsed = obj as AgentRowRaw[];
-            }
-          } catch (e) {
-            const failure: ApiFailure = buildFailure(code, 'invalid JSON');
-            const out: ApiResultAgents = {
-              ok: false,
-              status: code,
-              expectedMajor: DEFAULT_API_VERSION,
-              failure: failure,
-              reason: 'invalid JSON',
-            };
-            resolve(out);
-            return;
-          }
-        }
-        const out: ApiResultAgents = {
-          ok: true,
-          status: code,
-          data: parsed,
-          serverMajor: major,
-          expectedMajor: DEFAULT_API_VERSION,
-          versionNotice: versionNotice,
+/**
+ * 总秘书列表客户端：设备面前缀 /api/handset/agents，由配对得到的设备令牌鉴权。
+ * HTTP 样板收敛在 HttpKit.doRequest；200 但响应体不是数组时按失败分类，
+ * 调用方按「拉取总秘书列表失败」口径提示。
+ */
+export function fetchAgents(baseUrl: string, token: string): Promise<ApiResult<AgentRowRaw[]>> {
+  return doRequest<AgentRowRaw[]>(baseUrl, token, http.RequestMethod.GET, '/api/handset/agents', undefined)
+    .then((res: ApiResult<AgentRowRaw[]>): ApiResult<AgentRowRaw[]> => {
+      if (res.ok && res.data !== undefined && !Array.isArray(res.data)) {
+        const failure: ApiFailure = {
+          'kind': 'unknown',
+          'short': '拉取总秘书列表失败',
+          'hint': '桌面返回的不是列表；检查桌面版本',
         };
-        resolve(out);
-      },
-    );
-  });
+        const out: ApiResult<AgentRowRaw[]> = {
+          ok: false,
+          status: res.status,
+          apiVersion: res.apiVersion,
+          serverMajor: res.serverMajor,
+          expectedMajor: res.expectedMajor,
+          failure: failure,
+          reason: 'agents response is not an array',
+        };
+        return out;
+      }
+      return res;
+    });
 }

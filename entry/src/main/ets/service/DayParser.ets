@@ -6,7 +6,7 @@ interface EmptyEvidence {
 const EMPTY_EVIDENCE: EmptyEvidence = {};
 
 /**
- * 把 `/api/agenda/day` 返回的 JSON 解到 `DayPayload`。
+ * 把 `/api/handset/agenda/day` 返回的 JSON 解到 `DayPayload`。
  * 缺字段降级为空数组 / null；不抛、不猜（与 H2-APP-V0 / H2-PAIR 同口径）。
  */
 export function parseDayPayload(raw: string): DayPayload {
