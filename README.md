@@ -145,9 +145,10 @@ ArkTS Stage 模型工程，对应 Plobi 系统的**手机面**：
 - 本机命令入口（这套路径只在 `Cycle` 上成立）：
   `node "D:\Software\DevEco Studio\tools\hvigor\bin\hvigorw.js" assembleHap --mode module -p product=default`，
   环境变量 `DEVECO_SDK_HOME=D:\Software\DevEco Studio\sdk`。
-- 以上各条在本仓提交里成立，但 `Docs/PROGRESS.md` 那一行**还没登记**（2026-10-07 写这段时 `Docs` 工作区被其他
-  会话占着，六个文件是脏的，按 `ROADMAP §3.4` 不能替别人签）；`ROADMAP §1.2` 与 `§4` 的 `WP-APP-HANDSET` 行、
-  `specs/handset-app.md §6` 那条「PackageHap 卡 java」同样待改。**别把这份 README 当成已验收**
+- 以上各条已登记进 Docs（`Docs` `2e98b5a`，按裁定 73 只取自己的行）：`PROGRESS.md` 表尾一行、
+  `ROADMAP.md` §1.2 鸿蒙构建那一行与 §4 的 `WP-APP-HANDSET` 那一行、`specs/handset-app.md` §6 与 §8；
+  本仓的认领登记在 `Docs/reference/agent-register.md`。**别把这份 README 当成已验收**——Wave H 未合①还压着
+  签名与 `PLOBI_LAN` 两格
 
 ## 怎么用 DevEco 打开
 
