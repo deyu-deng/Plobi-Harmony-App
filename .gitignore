@@ -12,3 +12,8 @@ entry/src/main/resources/base/media/app_icon.png
 opencode.json
 opencode.json.backup.*
 deveco.jsonc
+/.aoci/
+/.cache/
+/aoci.txt
+/aoci.code.txt
+/aoci.meta.txt
