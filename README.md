@@ -30,7 +30,7 @@ ArkTS Stage 模型工程，对应 Plobi 系统的**手机面**：
 > 无人监听、`devices.json = {}`、`PLOBI_LAN` 默认关，这条链路客观上还没被验证过；② 工程里**没有可执行的测试入口**
 > （`entry/src/test/` 缺 `List.test.ets` 聚合，`entry/src/ohosTest/` 是空目录，构建日志明写
 > `not found resModel json file in .../ohosTest/module.json5`），所以 `entry/src/test/` 下 10 个测试文件
-> **一次都没跑过**，只被静态检查扫到；③ WS 握手能否带自定义头仍未实测。
+> **一次都没跑过**，只被静态检查扫到（**2026-10-10 更正：② 已由 `WP-APP-CALENDAR` T0/T1 解掉**——`List.test.ets` 聚合建好，本地 CLI 档真跑 **199 条全 Success**，此条不再是欠账）；③ WS 握手能否带自定义头仍未实测。
 > ④ `/api/handset/agents` 是**本仓自取的路径**——后端 `pairing.py:66-86` 里没注册、全仓 grep 0 命中，
 > 桌面补这个口之前聊天拉列表必然失败（已按用户裁定保留预切，并在 `Docs/specs/handset-app.md` §8 向桌面侧立案）。
 > 另两条仍待核：WS 正文字段名、提醒 `triggerTimeInSeconds` 的单位。
@@ -39,7 +39,7 @@ ArkTS Stage 模型工程，对应 Plobi 系统的**手机面**：
 1. **配对**（2026-10-07 已实现，**真机未验**）：首启填桌面 LAN 地址；**钥匙不再手填**——桌面点「新码」出 6 位数字，App 一次
    `POST /api/handset/pair/redeem` 换回**本机专属令牌**，入 Preferences，冷启动自动用
    （2026-10-05 裁定 64 改了这一块，见下面「请求头与钥匙」）
-2. **清单**：今日 / 明日 / 待确认 三段；`HH:MM–HH:MM 标题`，`end_at` 空只显示开始并标「未写结束」
+2. **清单**：今日 / 明日 / 待确认 三段；**周视图**（2026-10-10 `WP-APP-CALENDAR`，真机渲染未验）：横向 7 天（本周、周一起），今天/过去列视觉区分，点某天进当日详情（复用同一屏），冲突/避让层后到渐进补（9 请求 = 1 `fetchAgenda` + 1 `fetchPending` + 7 `fetchDay`），单日失败只降那一列，进入时滚动定位「现在」时段；`HH:MM–HH:MM 标题`，`end_at` 空只显示开始并标「未写结束」
 3. **批待确认**：点「确认 / 忽略」→ 调 `POST /api/handset/agenda/{id}/{confirm|dismiss}`（路径已于 2026-10-07 换到设备面）
 4. **本地提醒**：每次同步后重排，触发 = `start_at − 15min`，上限 30 条/包（系统限制 1700002）
 5. **离线**：先渲染缓存 + 标「上次同步 HH:MM」；桌面关闭不白屏
@@ -158,6 +158,18 @@ ArkTS Stage 模型工程，对应 Plobi 系统的**手机面**：
   为证明新套件真被执行：故意把 `WeekView.test.ets` 一条期望改成 `'1970-01-01'` 重跑，
   当场红 `Error in lays out seven ascending days`，随后撤掉探针跑回全绿。
   ⚠️ 仍然没验的：**渲染效果**（没有证书、设备今天还没插上），别把「193 全绿」读成「App 过关」。
+- **周视图那一刀（`WP-APP-CALENDAR` T2–T4，2026-10-10）已合**：`WeekView.ets`（区间→7 天分桶，跨年/跨月/闰年周单测，`6ae2402`）
+  + `WeekColumn.ets`（周视图列组件，`605da0e`）+ `Index.ets` 横向周条/点天详情/9 请求并发刷新
+  （1 `fetchAgenda` + 1 `fetchPending` + 7 `fetchDay`；冲突/避让层后到渐进补、单日失败只降那一列）
+  + `scrollToNow` 进入定位「现在」行（px→vp 转换、失败不滚，`2bd4e8e`）
+  + 周缓存按日期索引一份（`DayParser.parseCachedDays`/`serializeCachedDays`：`PREF_KEY_CACHED_DAY` 值升级
+  `{"days":{date:payload}}`，旧单日值读时按其 date 迁移、不新增键；成功一天写一天、失败日保留缓存旧值；
+  `pruneToWeekDays` 写盘前修剪到本周 7 天，`5783fd0`）。
+  验证：`arkts_check` 改动文件 0 违规、单测 **199/199**（T0/T1 后基线 193 + T4 新 6 条）、
+  `assembleHap` **BUILD SUCCESSFUL in 41 s 123 ms**。
+  ⚠️ **仍未验**：周视图在设备上的实际渲染（无证书、设备未插）；与桌面端同一参照的对齐。
+  Docs 落账（本刀收尾笔）：`REQUIREMENTS.md` R-080、`specs/handset-app.md` §3、`ROADMAP.md` §4 `WP-APP-HANDSET`
+  行、`PROGRESS.md` 表尾一行、登记格本刀行。
 - **`entry/src/ohosTest/` 依旧只有空目录**（没有 `module.json5`、没有 runner），仪器化测试那条路还没建；
   本仓用的是本地单测档（`isLocalTest`）这条路。
 - 本机命令入口（这套路径只在 `Cycle` 上成立）：
