@@ -17,6 +17,7 @@ import { todayLocalIso, tomorrowLocalIso } from '../utils/LocalDate';
 import { formatTimeRange, formatLocalNowHHmm } from '../utils/TimeFormat';
 import { parseDayPayload } from '../service/DayParser';
 import { TimelineRow, buildTimeline, markNow, kindLabel, mergeDay } from '../service/Timeline';
+import { componentUtils } from '@kit.ArkUI';
 import {
   WeekColumn as WeekColumnData,
   buildWeekColumns,
@@ -56,9 +57,70 @@ struct Index {
   private scheduledReminders: ScheduledReminder[] = [];
   /** 本周区间（周一→周日）拉回的已确认事件；周桶与提醒重排的数据源。 */
   private weekConfirmedEvents: AgendaEvent[] = [];
+  /** 时间轴滚动控制器：进入页面时定位到「现在」那一行（任务书 §T3）。 */
+  private bodyScroller: Scroller = new Scroller();
+  private hasAutoScrolled: boolean = false;
 
   aboutToAppear(): void {
     this.loadFromCache();
+  }
+
+  onPageShow(): void {
+    if (this.hasAutoScrolled) {
+      return;
+    }
+    this.hasAutoScrolled = true;
+    setTimeout((): void => {
+      this.scrollToNow();
+    }, 300);
+  }
+
+  /**
+   * 进入页面时把时间轴滚到「现在」那一行（任务书 §T3）。
+   * 用户已手动滚动则不抢；没有「现在」行（深夜等）则不动。
+   * windowOffset 为 px、scrollTo 为 vp，经 px2vp 转换；仅在未滚动（yOffset=0）时执行，
+   * 此时窗口差值即内容坐标，不依赖 windowOffset 的滚动语义。
+   */
+  private scrollToNow(): void {
+    if (this.selectedDay.length > 0) {
+      return;
+    }
+    const cur: OffsetResult = this.bodyScroller.currentOffset();
+    if (cur.yOffset > 0) {
+      return;
+    }
+    let nowId: string = '';
+    for (let i: number = 0; i < this.todayRows.length; i++) {
+      if (this.todayRows[i].isNow) {
+        nowId = this.todayRows[i].id;
+        break;
+      }
+    }
+    if (nowId.length === 0) {
+      return;
+    }
+    const ui = this.getUIContext();
+    const rowRect: componentUtils.ComponentInfo | undefined = this.rectById('row-' + nowId);
+    const scrollRect: componentUtils.ComponentInfo | undefined = this.rectById('body-scroll');
+    if (rowRect === undefined || scrollRect === undefined) {
+      return;
+    }
+    const deltaPx: number = rowRect.windowOffset.y - scrollRect.windowOffset.y;
+    if (deltaPx <= 0) {
+      return;
+    }
+    const deltaVp: number = ui.px2vp(deltaPx);
+    const target: number = deltaVp > 80 ? deltaVp - 80 : 0;
+    this.bodyScroller.scrollTo({ xOffset: 0, yOffset: target });
+  }
+
+  /** getRectangleById 可能抛（错误码 100001 等）；查不到就不滚（不抛、不猜）。 */
+  private rectById(id: string): componentUtils.ComponentInfo | undefined {
+    try {
+      return this.getUIContext().getComponentUtils().getRectangleById(id);
+    } catch (e) {
+      return undefined;
+    }
   }
 
   private loadFromCache(): void {
@@ -308,7 +370,7 @@ struct Index {
 
   @Builder
   bodyScroll(): void {
-    Scroll() {
+    Scroll(this.bodyScroller) {
       Column() {
         this.weekStrip();
 
@@ -357,7 +419,8 @@ struct Index {
       .padding({ left: 16, right: 16, top: 8, bottom: 8 });
     }
     .layoutWeight(1)
-    .width('100%');
+    .width('100%')
+    .id('body-scroll');
   }
 
   /** 周条：横向 7 天（D2 = 本周、周一起），冲突层按 D1 渐进补，单列降级不整屏红（C2）。 */
@@ -504,7 +567,8 @@ struct Index {
     .backgroundColor($r('sys.color.ohos_id_color_card_bg'))
     .borderWidth(row.isNow ? 1 : 0)
     .borderColor(row.isNow ? '#1A8C4A' : Color.Transparent)
-    .margin({ bottom: 8 });
+    .margin({ bottom: 8 })
+    .id('row-' + row.id);
   }
 
   @Builder
