@@ -15,7 +15,7 @@ import {
 import { ensureNotificationEnabled, rescheduleReminders, ScheduledReminder } from '../service/ReminderService';
 import { todayLocalIso, tomorrowLocalIso } from '../utils/LocalDate';
 import { formatTimeRange, formatLocalNowHHmm } from '../utils/TimeFormat';
-import { parseDayPayload } from '../service/DayParser';
+import { parseCachedDays, serializeCachedDays } from '../service/DayParser';
 import { TimelineRow, buildTimeline, markNow, kindLabel, mergeDay } from '../service/Timeline';
 import { componentUtils } from '@kit.ArkUI';
 import {
@@ -57,6 +57,8 @@ struct Index {
   private scheduledReminders: ScheduledReminder[] = [];
   /** 本周区间（周一→周日）拉回的已确认事件；周桶与提醒重排的数据源。 */
   private weekConfirmedEvents: AgendaEvent[] = [];
+  /** 周缓存：dateIso → 单日快照（T4 按日期索引的一份，键仍为 PREF_KEY_CACHED_DAY）。 */
+  private cachedDays: Map<string, DayPayload> = new Map<string, DayPayload>();
   /** 时间轴滚动控制器：进入页面时定位到「现在」那一行（任务书 §T3）。 */
   private bodyScroller: Scroller = new Scroller();
   private hasAutoScrolled: boolean = false;
@@ -139,10 +141,14 @@ struct Index {
     }
     const dayJson: string | undefined = getStringSync(PREF_KEY_CACHED_DAY);
     if (dayJson !== undefined) {
-      const day: DayPayload = parseDayPayload(dayJson);
-      this.anchors = day.anchors;
-      this.planItems = day.plan_items;
-      this.conflicts = day.conflicts;
+      // 新格式 {"days": {...}} 与旧格式单日 payload 都能读（迁移期旧值按其 date 归位）。
+      this.cachedDays = parseCachedDays(dayJson);
+    }
+    const todayDp: DayPayload | undefined = this.cachedDays.get(today);
+    if (todayDp !== undefined) {
+      this.anchors = todayDp.anchors;
+      this.planItems = todayDp.plan_items;
+      this.conflicts = todayDp.conflicts;
     }
     const last: string | undefined = getStringSync(PREF_KEY_LAST_SYNC);
     if (last !== undefined) {
@@ -163,23 +169,37 @@ struct Index {
     }
   }
 
-  /** 冲突/避让层：先全部置空，今日层用现有缓存数据（若有），刷新时按 D1 渐进替换。 */
+  /** 冲突/避让层：冷启动时逐日从周缓存填（离线也有 7 天的层，T4），刷新时按 D1 渐进替换。 */
   private initWeekLayers(): void {
     const layers: WeekDayLayer[] = [];
     for (let i: number = 0; i < DAYS_PER_WEEK; i++) {
       layers.push(emptyWeekDayLayer());
     }
-    const todayIdx: number = this.indexOfWeekDay(todayLocalIso());
-    if (todayIdx >= 0) {
-      const todayLayer: WeekDayLayer = {
-        'anchors': this.anchors,
-        'plans': this.planItems,
-        'conflicts': this.conflicts,
-        'degrade': '',
-      };
-      layers[todayIdx] = todayLayer;
+    for (let i: number = 0; i < this.weekColumns.length && i < layers.length; i++) {
+      const dp: DayPayload | undefined = this.cachedDays.get(this.weekColumns[i].dateIso);
+      if (dp !== undefined) {
+        const cachedLayer: WeekDayLayer = {
+          'anchors': dp.anchors,
+          'plans': dp.plan_items,
+          'conflicts': dp.conflicts,
+          'degrade': '',
+        };
+        layers[i] = cachedLayer;
+      }
     }
     this.weekLayers = layers;
+  }
+
+  /** 写盘前把周缓存修剪成本周 7 天（防跨周累积；重建新 Map，不用 delete）。 */
+  private pruneToWeekDays(days: ReadonlyMap<string, DayPayload>, weekDays: ReadonlyArray<string>): Map<string, DayPayload> {
+    const out: Map<string, DayPayload> = new Map<string, DayPayload>();
+    for (const d of weekDays) {
+      const dp: DayPayload | undefined = days.get(d);
+      if (dp !== undefined) {
+        out.set(d, dp);
+      }
+    }
+    return out;
   }
 
   private indexOfWeekDay(dayIso: string): number {
@@ -695,6 +715,10 @@ struct Index {
         layer.anchors = dayRes.data.anchors;
         layer.plans = dayRes.data.plan_items;
         layer.conflicts = dayRes.data.conflicts;
+        // 成功一天写一天（T4 周缓存）；失败那天保留缓存旧值（离线先渲染缓存），不动盘。
+        this.cachedDays.set(weekDays[i], dayRes.data);
+        this.cachedDays = this.pruneToWeekDays(this.cachedDays, weekDays);
+        await putString(PREF_KEY_CACHED_DAY, serializeCachedDays(this.cachedDays));
       } else if (dayRes.failure !== undefined) {
         layer.degrade = dayRes.failure.short;
       } else {
@@ -708,11 +732,6 @@ struct Index {
         this.planItems = layer.plans;
         this.conflicts = layer.conflicts;
         this.rebuildTimeline();
-        if (layer.degrade.length === 0 && dayRes.data !== undefined) {
-          await putString(PREF_KEY_CACHED_DAY, JSON.stringify(dayRes.data));
-        } else {
-          await putString(PREF_KEY_CACHED_DAY, '');
-        }
       }
       if (this.selectedDay === weekDays[i]) {
         this.rebuildSelectedDetail();

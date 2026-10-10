@@ -1,5 +1,6 @@
 import { describe, it, expect } from '@ohos/hypium';
-import { parseDayPayload } from '../main/ets/service/DayParser';
+import { parseDayPayload, parseCachedDays, serializeCachedDays } from '../main/ets/service/DayParser';
+import { DayPayload, Anchor } from '../main/ets/model/AgendaEvent';
 
 interface TestEvent {
   id: string;
@@ -37,6 +38,19 @@ interface TestEvidence {
 }
 
 const PLAN_EVIDENCE: TestEvidence = { 'kind': 'evening_plan' };
+
+/** T4 周缓存用例：造一个指定日期的空单日快照。 */
+function emptyDayPayload(date: string): DayPayload {
+  const dp: DayPayload = {
+    'date': date,
+    'events': [],
+    'anchors': [],
+    'plan_items': [],
+    'conflicts': [],
+    'plan_status': null,
+  };
+  return dp;
+}
 
 interface TestConflict {
   left_id: string;
@@ -249,6 +263,79 @@ export default function dayParserTest(): void {
       };
       const p = parseDayPayload(JSON.stringify(payload));
       expect(p.events[0].end_at).assertEqual(undefined);
+    });
+  });
+
+  describe('DayParser.parseCachedDays / serializeCachedDays (T4 周缓存)', (): void => {
+    it('round-trips a week of seven days', 0, (): void => {
+      const days: Map<string, DayPayload> = new Map<string, DayPayload>();
+      for (let i: number = 0; i < 7; i++) {
+        const d: string = '2026-10-1' + String(2 + i);
+        days.set(d, emptyDayPayload(d));
+      }
+      const anchor: Anchor = {
+        'id': 'routine:lunch',
+        'title': '午饭',
+        'start_at': '2026-10-15T12:00:00',
+        'end_at': '2026-10-15T12:40:00',
+        'template_id': 'lunch',
+        'flex': false,
+      };
+      const wed: DayPayload | undefined = days.get('2026-10-15');
+      if (wed !== undefined) {
+        wed.anchors = [anchor];
+      }
+      const raw: string = serializeCachedDays(days);
+      const back: Map<string, DayPayload> = parseCachedDays(raw);
+      expect(back.size).assertEqual(7);
+      expect(back.has('2026-10-12')).assertTrue();
+      expect(back.has('2026-10-18')).assertTrue();
+      const wedBack: DayPayload | undefined = back.get('2026-10-15');
+      expect(wedBack !== undefined).assertTrue();
+      if (wedBack !== undefined) {
+        expect(wedBack.anchors.length).assertEqual(1);
+        expect(wedBack.anchors[0].template_id).assertEqual('lunch');
+      }
+    });
+
+    it('migrates legacy single-day format by its own date', 0, (): void => {
+      const legacy: TestDayPayload = {
+        'date': '2026-10-12',
+        'events': [],
+        'anchors': [],
+        'plan_items': [],
+        'conflicts': [],
+        'plan_status': null,
+      };
+      const back: Map<string, DayPayload> = parseCachedDays(JSON.stringify(legacy));
+      expect(back.size).assertEqual(1);
+      const dp: DayPayload | undefined = back.get('2026-10-12');
+      expect(dp !== undefined).assertTrue();
+    });
+
+    it('returns empty map on empty / malformed string', 0, (): void => {
+      expect(parseCachedDays('').size).assertEqual(0);
+      expect(parseCachedDays('{not-json').size).assertEqual(0);
+    });
+
+    it('returns empty map on non-object root', 0, (): void => {
+      expect(parseCachedDays('"hello"').size).assertEqual(0);
+      expect(parseCachedDays('[1,2,3]').size).assertEqual(0);
+    });
+
+    it('skips entries whose payload has no date', 0, (): void => {
+      const raw: string = '{"days":{'
+        + '"2026-10-13":{"date":"2026-10-13","events":[],"anchors":[],"plan_items":[],"conflicts":[],"plan_status":null},'
+        + '"broken":{"events":[],"anchors":[],"plan_items":[],"conflicts":[],"plan_status":null}'
+        + '}}';
+      const back: Map<string, DayPayload> = parseCachedDays(raw);
+      expect(back.size).assertEqual(1);
+      expect(back.has('2026-10-13')).assertTrue();
+    });
+
+    it('legacy payload without date yields empty map', 0, (): void => {
+      const raw: string = '{"events":[],"anchors":[],"plan_items":[],"conflicts":[],"plan_status":null}';
+      expect(parseCachedDays(raw).size).assertEqual(0);
     });
   });
 }

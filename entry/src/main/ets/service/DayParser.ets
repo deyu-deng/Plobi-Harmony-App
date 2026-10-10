@@ -178,3 +178,65 @@ function parseStringArray(raw: Object | undefined): string[] | undefined {
   }
   return out;
 }
+
+/**
+ * 周缓存（WP-APP-CALENDAR T4）：`PREF_KEY_CACHED_DAY` 的值从单日 payload 升级为按日期索引的一份。
+ * 新格式：{"days": {"2026-10-12": <DayPayload>, ...}}；
+ * 旧格式（迁移读取）：顶层就是单日 payload（有 "date" 字段），按其 date 归位。
+ * 同一个键，不新增键、不许两套并存（任务书 §T4 / C3）。
+ */
+
+/**
+ * 解析周缓存串。新格式取 days 下每条（以 payload 自带的 date 为键，缺 date 的条目跳过）；
+ * 旧格式按顶层单日 payload 迁移归位。失败一律返回空 Map（不抛、不猜）。
+ */
+export function parseCachedDays(raw: string): Map<string, DayPayload> {
+  const out: Map<string, DayPayload> = new Map<string, DayPayload>();
+  let obj: Object;
+  try {
+    obj = JSON.parse(raw) as Object;
+  } catch (e) {
+    return out;
+  }
+  if (typeof obj !== 'object' || obj === null) {
+    return out;
+  }
+  const rec: Record<string, Object> = obj as Record<string, Object>;
+  const daysRaw: Object | undefined = rec['days'];
+  if (daysRaw !== undefined && typeof daysRaw === 'object' && !Array.isArray(daysRaw)) {
+    const daysRec: Record<string, Object> = daysRaw as Record<string, Object>;
+    const keys: string[] = Object.keys(daysRec);
+    for (const k of keys) {
+      const dpRaw: Object | undefined = daysRec[k];
+      if (dpRaw === undefined || dpRaw === null || typeof dpRaw !== 'object') {
+        continue;
+      }
+      const dp: DayPayload = parseDayPayload(JSON.stringify(dpRaw));
+      if (dp.date.length === 0) {
+        continue;
+      }
+      out.set(dp.date, dp);
+    }
+    return out;
+  }
+  if (typeof rec['date'] === 'string') {
+    const legacy: DayPayload = parseDayPayload(raw);
+    if (legacy.date.length > 0) {
+      out.set(legacy.date, legacy);
+    }
+  }
+  return out;
+}
+
+/**
+ * 序列化周缓存（新格式）。调用方负责先修剪到本周 7 天（防跨周累积）。
+ */
+export function serializeCachedDays(days: ReadonlyMap<string, DayPayload>): string {
+  const rec: Record<string, Object> = {};
+  days.forEach((v: DayPayload, k: string): void => {
+    rec[k] = v as Object;
+  });
+  const wrapper: Record<string, Object> = {};
+  wrapper['days'] = rec as Object;
+  return JSON.stringify(wrapper);
+}
