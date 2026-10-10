@@ -16,7 +16,15 @@ import { ensureNotificationEnabled, rescheduleReminders, ScheduledReminder } fro
 import { todayLocalIso, tomorrowLocalIso } from '../utils/LocalDate';
 import { formatTimeRange, formatLocalNowHHmm } from '../utils/TimeFormat';
 import { parseDayPayload } from '../service/DayParser';
-import { TimelineRow, buildTimeline, markNow, kindLabel } from '../service/Timeline';
+import { TimelineRow, buildTimeline, markNow, kindLabel, mergeDay } from '../service/Timeline';
+import {
+  WeekColumn as WeekColumnData,
+  buildWeekColumns,
+  weekDaysFromMonday,
+  mondayOfLocalDay,
+  DAYS_PER_WEEK,
+} from '../service/WeekView';
+import { WeekColumn } from '../components/WeekColumn';
 
 @Entry
 @Component
@@ -37,19 +45,31 @@ struct Index {
   @State topHint: string = '';
   @State versionNotice: string = '';
   @State versionHint: string = '';
+  @State weekColumns: WeekColumnData[] = [];
+  @State weekLayers: WeekDayLayer[] = [];
+  @State selectedDay: string = '';
+  @State selectedRows: TimelineRow[] = [];
+  @State selectedConflicts: ConflictPair[] = [];
+  @State selectedDegrade: string = '';
+  @State selectedPendingCount: number = 0;
 
   private scheduledReminders: ScheduledReminder[] = [];
+  /** 本周区间（周一→周日）拉回的已确认事件；周桶与提醒重排的数据源。 */
+  private weekConfirmedEvents: AgendaEvent[] = [];
 
   aboutToAppear(): void {
     this.loadFromCache();
   }
 
   private loadFromCache(): void {
+    const today: string = todayLocalIso();
+    const tomorrow: string = tomorrowLocalIso();
     const eventsJson: string | undefined = getStringSync(PREF_KEY_CACHED_EVENTS);
     if (eventsJson !== undefined) {
-      const parsed: ParsedEvents = parseEventsJson(eventsJson);
-      this.todayEvents = parsed.today;
-      this.tomorrowEvents = parsed.tomorrow;
+      const all: AgendaEvent[] = parseEventsJson(eventsJson);
+      this.weekConfirmedEvents = all;
+      this.todayEvents = filterByDate(all, today);
+      this.tomorrowEvents = filterByDate(all, tomorrow);
     }
     const pendingJson: string | undefined = getStringSync(PREF_KEY_CACHED_PENDING);
     if (pendingJson !== undefined) {
@@ -66,7 +86,107 @@ struct Index {
     if (last !== undefined) {
       this.lastSyncText = '上次同步 ' + last;
     }
+    this.rebuildWeekColumns();
+    this.initWeekLayers();
     this.rebuildTimeline();
+  }
+
+  /** 周桶 = 本周已确认事件 + 全量待确认（本地按日期过滤，前提 2 允许），一次构建，T4 不新增缓存键。 */
+  private rebuildWeekColumns(): void {
+    const combined: AgendaEvent[] = this.weekConfirmedEvents.concat(this.pendingEvents);
+    const bucket = buildWeekColumns(combined, todayLocalIso());
+    this.weekColumns = bucket.columns;
+    if (this.selectedDay.length > 0) {
+      this.rebuildSelectedDetail();
+    }
+  }
+
+  /** 冲突/避让层：先全部置空，今日层用现有缓存数据（若有），刷新时按 D1 渐进替换。 */
+  private initWeekLayers(): void {
+    const layers: WeekDayLayer[] = [];
+    for (let i: number = 0; i < DAYS_PER_WEEK; i++) {
+      layers.push(emptyWeekDayLayer());
+    }
+    const todayIdx: number = this.indexOfWeekDay(todayLocalIso());
+    if (todayIdx >= 0) {
+      const todayLayer: WeekDayLayer = {
+        'anchors': this.anchors,
+        'plans': this.planItems,
+        'conflicts': this.conflicts,
+        'degrade': '',
+      };
+      layers[todayIdx] = todayLayer;
+    }
+    this.weekLayers = layers;
+  }
+
+  private indexOfWeekDay(dayIso: string): number {
+    for (let i: number = 0; i < this.weekColumns.length; i++) {
+      if (this.weekColumns[i].dateIso === dayIso) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  private layerConflictsCount(idx: number): number {
+    if (idx >= 0 && idx < this.weekLayers.length) {
+      return this.weekLayers[idx].conflicts.length;
+    }
+    return 0;
+  }
+
+  private layerDegradeText(idx: number): string {
+    if (idx >= 0 && idx < this.weekLayers.length) {
+      return this.weekLayers[idx].degrade;
+    }
+    return '';
+  }
+
+  /** 点某天进当日详情（复用现有渲染，任务书 §T2）；再点同一天 = 回到本周总览。 */
+  private selectDay(dateIso: string): void {
+    if (this.selectedDay === dateIso) {
+      this.clearSelectedDay();
+      return;
+    }
+    this.selectedDay = dateIso;
+    this.rebuildSelectedDetail();
+  }
+
+  private clearSelectedDay(): void {
+    this.selectedDay = '';
+    this.selectedRows = [];
+    this.selectedConflicts = [];
+    this.selectedDegrade = '';
+    this.selectedPendingCount = 0;
+  }
+
+  private rebuildSelectedDetail(): void {
+    if (this.selectedDay.length === 0) {
+      return;
+    }
+    const idx: number = this.indexOfWeekDay(this.selectedDay);
+    if (idx < 0) {
+      this.clearSelectedDay();
+      return;
+    }
+    const col: WeekColumnData = this.weekColumns[idx];
+    const layer: WeekDayLayer = idx < this.weekLayers.length ? this.weekLayers[idx] : emptyWeekDayLayer();
+    const rows: TimelineRow[] = mergeDay(col.events, layer.anchors, layer.plans);
+    this.selectedRows = markNow(rows, Date.now());
+    this.selectedConflicts = layer.conflicts;
+    this.selectedDegrade = layer.degrade;
+    this.selectedPendingCount = col.pending.length;
+  }
+
+  private selectedDayTitle(): string {
+    const idx: number = this.indexOfWeekDay(this.selectedDay);
+    if (idx < 0) {
+      return this.selectedDay;
+    }
+    const di: number = this.weekColumns[idx].dayIndex;
+    const wd: string = di >= 0 && di < WEEKDAY_TITLE_LABELS.length ? WEEKDAY_TITLE_LABELS[di] : '';
+    return this.selectedDay + ' · ' + wd;
   }
 
   private rebuildTimeline(): void {
@@ -190,26 +310,32 @@ struct Index {
   bodyScroll(): void {
     Scroll() {
       Column() {
-        if (this.conflicts.length > 0) {
-          this.conflictChip();
-        }
+        this.weekStrip();
 
-        this.sectionTitle('今日');
-        if (this.todayRows.length === 0) {
-          this.emptyHint('今日没有安排');
+        if (this.selectedDay.length > 0) {
+          this.dayDetail();
         } else {
-          ForEach(this.todayRows, (item: TimelineRow): void => {
-            this.timelineRow(item);
-          }, (item: TimelineRow): string => item.id);
-        }
+          if (this.conflicts.length > 0) {
+            this.conflictChip('今日有 ' + String(this.conflicts.length) + ' 段时间冲突，详见桌面');
+          }
 
-        this.sectionTitle('明日');
-        if (this.tomorrowRows.length === 0) {
-          this.emptyHint('明日没有安排');
-        } else {
-          ForEach(this.tomorrowRows, (item: TimelineRow): void => {
-            this.timelineRow(item);
-          }, (item: TimelineRow): string => 'tomorrow-' + item.id);
+          this.sectionTitle('今日');
+          if (this.todayRows.length === 0) {
+            this.emptyHint('今日没有安排');
+          } else {
+            ForEach(this.todayRows, (item: TimelineRow): void => {
+              this.timelineRow(item);
+            }, (item: TimelineRow): string => item.id);
+          }
+
+          this.sectionTitle('明日');
+          if (this.tomorrowRows.length === 0) {
+            this.emptyHint('明日没有安排');
+          } else {
+            ForEach(this.tomorrowRows, (item: TimelineRow): void => {
+              this.timelineRow(item);
+            }, (item: TimelineRow): string => 'tomorrow-' + item.id);
+          }
         }
 
         this.sectionTitle('待确认');
@@ -234,10 +360,95 @@ struct Index {
     .width('100%');
   }
 
+  /** 周条：横向 7 天（D2 = 本周、周一起），冲突层按 D1 渐进补，单列降级不整屏红（C2）。 */
   @Builder
-  conflictChip(): void {
+  weekStrip(): void {
+    if (this.weekColumns.length > 0) {
+      Column() {
+        this.sectionTitle('本周');
+        Scroll() {
+          Row() {
+            ForEach(this.weekColumns, (col: WeekColumnData, idx: number): void => {
+              WeekColumn({
+                column: col,
+                conflictsCount: this.layerConflictsCount(idx),
+                degradeText: this.layerDegradeText(idx),
+                isSelected: this.selectedDay === col.dateIso,
+                onDayTap: (d: string): void => {
+                  this.selectDay(d);
+                },
+              });
+            }, (col: WeekColumnData): string => col.dateIso);
+          }
+        }
+        .scrollable(ScrollDirection.Horizontal)
+        .width('100%');
+      }
+      .width('100%');
+    }
+  }
+
+  /** 选中日详情：返回行 + 该日冲突/降级提示 + 该日时间轴（复用 timelineRow 渲染）。 */
+  @Builder
+  dayDetail(): void {
+    Column() {
+      Row() {
+        Text('← 回到本周')
+          .fontSize(14)
+          .fontColor($r('sys.color.ohos_id_color_text_secondary'))
+          .onClick((): void => {
+            this.clearSelectedDay();
+          });
+        Blank();
+        Text(this.selectedDayTitle())
+          .fontSize(14)
+          .fontWeight(FontWeight.Medium);
+      }
+      .width('100%')
+      .margin({ top: 8, bottom: 4 });
+
+      if (this.selectedDegrade.length > 0) {
+        Row() {
+          Text('该日冲突与避让取不到：' + this.selectedDegrade)
+            .fontSize(12)
+            .fontColor($r('sys.color.ohos_id_color_text_tertiary'))
+            .layoutWeight(1);
+        }
+        .width('100%')
+        .padding(10)
+        .borderRadius(8)
+        .backgroundColor($r('sys.color.ohos_id_color_card_bg'))
+        .margin({ bottom: 8 });
+      } else if (this.selectedConflicts.length > 0) {
+        this.conflictChip('该日有 ' + String(this.selectedConflicts.length) + ' 段时间冲突，详见桌面');
+      }
+
+      if (this.selectedPendingCount > 0) {
+        Row() {
+          Text('该日待确认 ' + String(this.selectedPendingCount) + ' 条，见下方待确认区')
+            .fontSize(12)
+            .fontColor('#7A5A18')
+            .layoutWeight(1);
+        }
+        .width('100%')
+        .margin({ bottom: 8 });
+      }
+
+      if (this.selectedRows.length === 0) {
+        this.emptyHint('这天没有安排');
+      } else {
+        ForEach(this.selectedRows, (item: TimelineRow): void => {
+          this.timelineRow(item);
+        }, (item: TimelineRow): string => 'detail-' + item.id);
+      }
+    }
+    .width('100%');
+  }
+
+  @Builder
+  conflictChip(text: string): void {
     Row() {
-      Text('今日有 ' + String(this.conflicts.length) + ' 段时间冲突，详见桌面')
+      Text(text)
         .fontSize(12)
         .fontColor('#7A5A18')
         .layoutWeight(1);
@@ -345,6 +556,11 @@ struct Index {
     .backgroundColor($r('sys.color.ohos_id_color_background'));
   }
 
+  /**
+   * 刷新 = 1× fetchAgenda（周一→周日）+ 1× fetchPending + 7× fetchDay，共 9 个请求并发发出（D1/C1）。
+   * 首屏只等前两个：分桶 + 三段列表先渲染；7 个单日快照逐个回来逐列补冲突/避让层，
+   * 单日失败只降级那一列（C2），整屏不红。
+   */
   private async refresh(): Promise<void> {
     if (this.isRefreshing) {
       return;
@@ -363,17 +579,26 @@ struct Index {
     }
     const today: string = todayLocalIso();
     const tomorrow: string = tomorrowLocalIso();
-    const eventsPromise: Promise<ApiResult<AgendaEvent[]>> = fetchAgenda(baseUrl, token, today, tomorrow);
+    const monday: string = mondayOfLocalDay(today);
+    const weekDays: string[] = weekDaysFromMonday(monday);
+    if (weekDays.length !== DAYS_PER_WEEK) {
+      this.topError = '刷新失败：算不出本周';
+      this.isRefreshing = false;
+      return;
+    }
+    const eventsPromise: Promise<ApiResult<AgendaEvent[]>> = fetchAgenda(baseUrl, token, monday, weekDays[DAYS_PER_WEEK - 1]);
     const pendingPromise: Promise<ApiResult<AgendaEvent[]>> = fetchPending(baseUrl, token);
-    const dayPromise: Promise<ApiResult<DayPayload>> = fetchDay(baseUrl, token, today);
+    const dayPromises: Array<Promise<ApiResult<DayPayload>>> = [];
+    for (let i: number = 0; i < weekDays.length; i++) {
+      dayPromises.push(fetchDay(baseUrl, token, weekDays[i]));
+    }
     const eventsRes: ApiResult<AgendaEvent[]> = await eventsPromise;
-    const pendingRes: ApiResult<AgendaEvent[]> = await pendingPromise;
-    const dayRes: ApiResult<DayPayload> = await dayPromise;
     if (!eventsRes.ok) {
       this.applyApiFailure('拉取清单', eventsRes);
       this.isRefreshing = false;
       return;
     }
+    const pendingRes: ApiResult<AgendaEvent[]> = await pendingPromise;
     if (!pendingRes.ok) {
       this.applyApiFailure('拉取待确认', pendingRes);
       this.isRefreshing = false;
@@ -382,20 +607,12 @@ struct Index {
     const all: AgendaEvent[] = eventsRes.data ?? [];
     const todayList: AgendaEvent[] = filterByDate(all, today);
     const tomorrowList: AgendaEvent[] = filterByDate(all, tomorrow);
+    this.weekConfirmedEvents = all;
     this.todayEvents = todayList;
     this.tomorrowEvents = tomorrowList;
     this.pendingEvents = pendingRes.data ?? [];
-    if (dayRes.ok && dayRes.data !== undefined) {
-      this.anchors = dayRes.data.anchors;
-      this.planItems = dayRes.data.plan_items;
-      this.conflicts = dayRes.data.conflicts;
-      await putString(PREF_KEY_CACHED_DAY, JSON.stringify(dayRes.data));
-    } else {
-      this.anchors = [];
-      this.planItems = [];
-      this.conflicts = [];
-      await putString(PREF_KEY_CACHED_DAY, '');
-    }
+    this.rebuildWeekColumns();
+    this.initWeekLayers();
     this.rebuildTimeline();
     const now: string = formatLocalNowHHmm();
     this.lastSyncText = '上次同步 ' + now;
@@ -407,8 +624,38 @@ struct Index {
       this.versionNotice = eventsRes.versionNotice.short;
       this.versionHint = eventsRes.versionNotice.hint;
     }
+    for (let i: number = 0; i < dayPromises.length; i++) {
+      const dayRes: ApiResult<DayPayload> = await dayPromises[i];
+      const layer: WeekDayLayer = emptyWeekDayLayer();
+      if (dayRes.ok && dayRes.data !== undefined) {
+        layer.anchors = dayRes.data.anchors;
+        layer.plans = dayRes.data.plan_items;
+        layer.conflicts = dayRes.data.conflicts;
+      } else if (dayRes.failure !== undefined) {
+        layer.degrade = dayRes.failure.short;
+      } else {
+        layer.degrade = 'HTTP ' + String(dayRes.status);
+      }
+      const nextLayers: WeekDayLayer[] = this.weekLayers.slice();
+      nextLayers[i] = layer;
+      this.weekLayers = nextLayers;
+      if (weekDays[i] === today) {
+        this.anchors = layer.anchors;
+        this.planItems = layer.plans;
+        this.conflicts = layer.conflicts;
+        this.rebuildTimeline();
+        if (layer.degrade.length === 0 && dayRes.data !== undefined) {
+          await putString(PREF_KEY_CACHED_DAY, JSON.stringify(dayRes.data));
+        } else {
+          await putString(PREF_KEY_CACHED_DAY, '');
+        }
+      }
+      if (this.selectedDay === weekDays[i]) {
+        this.rebuildSelectedDetail();
+      }
+    }
     this.isRefreshing = false;
-    void this.reschedule(todayList.concat(tomorrowList));
+    void this.reschedule(all);
     void this.checkNotificationPermission();
   }
 
@@ -436,6 +683,7 @@ struct Index {
     this.topError = '';
     this.pendingEvents = this.pendingEvents.filter((e: AgendaEvent): boolean => e.id !== item.id);
     await putString(PREF_KEY_CACHED_PENDING, JSON.stringify(this.pendingEvents));
+    this.rebuildWeekColumns();
   }
 
   private async reschedule(all: AgendaEvent[]): Promise<void> {
@@ -462,34 +710,36 @@ struct Index {
   }
 }
 
-interface ParsedEvents {
-  today: AgendaEvent[];
-  tomorrow: AgendaEvent[];
+/** 一天的冲突/避让层（D1：来自该日 fetchDay 单日快照；degrade 非空 = 该日取不到，C2 单列降级）。 */
+interface WeekDayLayer {
+  anchors: Anchor[];
+  plans: PlanItem[];
+  conflicts: ConflictPair[];
+  degrade: string;
 }
 
-function parseEventsJson(raw: string): ParsedEvents {
+function emptyWeekDayLayer(): WeekDayLayer {
+  const layer: WeekDayLayer = {
+    'anchors': [],
+    'plans': [],
+    'conflicts': [],
+    'degrade': '',
+  };
+  return layer;
+}
+
+/** 选中日详情的周几标题（dayIndex 0=周一 … 6=周日，与 WeekView 口径一致）。 */
+const WEEKDAY_TITLE_LABELS: ReadonlyArray<string> = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+
+function parseEventsJson(raw: string): AgendaEvent[] {
   try {
     const obj: Object = JSON.parse(raw) as Object;
     if (!Array.isArray(obj)) {
-      return { today: [], tomorrow: [] };
+      return [];
     }
-    const arr: Object[] = obj as Object[];
-    const today: string = todayLocalIso();
-    const tomorrow: string = tomorrowLocalIso();
-    const todayList: AgendaEvent[] = [];
-    const tomorrowList: AgendaEvent[] = [];
-    for (let i: number = 0; i < arr.length; i++) {
-      const e: AgendaEvent = arr[i] as AgendaEvent;
-      const d: string = e.start_at.slice(0, 10);
-      if (d === today) {
-        todayList.push(e);
-      } else if (d === tomorrow) {
-        tomorrowList.push(e);
-      }
-    }
-    return { today: todayList, tomorrow: tomorrowList };
+    return obj as AgendaEvent[];
   } catch (e) {
-    return { today: [], tomorrow: [] };
+    return [];
   }
 }
 
