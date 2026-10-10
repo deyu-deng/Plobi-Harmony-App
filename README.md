@@ -124,7 +124,7 @@ ArkTS Stage 模型工程，对应 Plobi 系统的**手机面**：
 
 - **出包这一格：`spawn java ENOENT` 是真的，而且已定位到解法**（2026-10-10 现核）。
   10-09 与 10-10 两次命令行复跑里 `:entry:default@PackageHap` 都显示 `UP-TO-DATE`（复用 10-07 那次 IDE 构建的产物），
-  **它根本没真跑**——所以本 README 前一天写的「不再复现」是**错的结论**，Docs 里同源的那两处也已一并更正。
+  **它根本没真跑**——所以本 README 前一天写的「不再复现」是**错的结论**；Docs 里同源的两处（`specs/handset-app.md` §6、`ROADMAP §1.2`）**尚未更正**，仍是「已不再复现／根因未查明」的旧口径，引用前先拿本节对表。
   今天本地单测跑完把打包状态弄脏，`PackageHap` 一真跑就撞回 `spawn java ENOENT`（`Error Code: 00308018`）。
   **根因**：hvigor 是直接 `spawn java` 的，构建日志里写着 `JAVA_HOME: 'D:\Software\DevEco Studio\jbr'` 却仍然 ENOENT，
   说明它要的是**进程 PATH 上的 java**，不是读过 JAVA_HOME 就算。
@@ -146,7 +146,7 @@ ArkTS Stage 模型工程，对应 Plobi 系统的**手机面**：
   只有 `export default function xxxTest()`，**缺聚合入口 `List.test.ets`**，所以「单测全绿」从来没有证据。
   本机可执行的命令（**不需要设备、不需要模拟器**）：
   ```
-  "D:\Software\DevEco Studio\tools\hvigor\bin\hvigorw.js" --mode module -p module=entry@default -p isLocalTest=true test --no-daemon
+  node "D:\Software\DevEco Studio\tools\hvigor\bin\hvigorw.js" --mode module -p module=entry@default -p isLocalTest=true test --no-daemon
   ```
   现核结果：**193 条用例，`result=Success` 193 条，非 Success 0 条**（逐条落在
   `entry/.test/default/intermediates/test/coverage_data/test_result.txt`，该目录已进 `.gitignore`）。
