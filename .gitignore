@@ -17,3 +17,6 @@ deveco.jsonc
 /aoci.txt
 /aoci.code.txt
 /aoci.meta.txt
+
+# 本地单测构建产物（hvigorw -p isLocalTest=true test 生成，勿入仓）
+/entry/.test/

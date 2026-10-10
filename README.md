@@ -122,12 +122,17 @@ ArkTS Stage 模型工程，对应 Plobi 系统的**手机面**：
 
 ## 当前状态
 
-- **出包链路通了**（2026-10-07）：`hvigor assembleHap` 全绿，`:entry:default@PackageHap` 不再报
-  **`spawn java ENOENT`**，产物落在 `entry/build/default/outputs/default/`（`entry-default.hap` /
-  `entry-default-unsigned.hap`）与 `build/outputs/default/Plobi-Harmony-App-default-unsigned.app`。
-  Qoder 用文档里那条命令行**干净重跑过一次**（`--no-daemon`，1min59s，33 任务）确认不是 IDE 独享的现象。
-  **根因没查清**——本 WP 的代码改动里没有任何 java 相关配置，所以这条只能记成「不再复现」，不能记成「已解决」；
-  原先那条「下一步该查 hvigor 怎么找 java」的待办**撤掉**。
+- **出包这一格：`spawn java ENOENT` 是真的，而且已定位到解法**（2026-10-10 现核）。
+  10-09 与 10-10 两次命令行复跑里 `:entry:default@PackageHap` 都显示 `UP-TO-DATE`（复用 10-07 那次 IDE 构建的产物），
+  **它根本没真跑**——所以本 README 前一天写的「不再复现」是**错的结论**，Docs 里同源的那两处也已一并更正。
+  今天本地单测跑完把打包状态弄脏，`PackageHap` 一真跑就撞回 `spawn java ENOENT`（`Error Code: 00308018`）。
+  **根因**：hvigor 是直接 `spawn java` 的，构建日志里写着 `JAVA_HOME: 'D:\Software\DevEco Studio\jbr'` 却仍然 ENOENT，
+  说明它要的是**进程 PATH 上的 java**，不是读过 JAVA_HOME 就算。
+  **解法（当场验过：`Finished :entry:default@PackageHap after 604 ms` + `BUILD SUCCESSFUL`）**：
+  `JAVA_HOME=D:\Software\DevEco Studio\jbr`，并把 `D:\Software\DevEco Studio\jbr\bin` **前置进 PATH**，
+  再加 `--no-daemon`（jbr 是 OpenJDK 25.0.2）。
+  ⚠️ 这**推翻了 `Docs/specs/handset-app.md` §6 与 `ROADMAP §1.2` 原先那句「已排除 PATH 没设好」**——
+  那次没成的差别大概率在 daemon 缓存了环境；别拿那句当结论再绕一圈。
 - **包还不能装**：`build-profile.json5:3` 是 `"signingConfigs": []`，构建日志明写
   `WARN: Will skip sign 'hos_hap'. No signingConfigs profile is configured`——unsigned HAP 装不上真机，
   这一步需要开发者证书/自动签名，**不在本 WP 范围**。
@@ -137,11 +142,24 @@ ArkTS Stage 模型工程，对应 Plobi 系统的**手机面**：
   ① 请求换到 `/api/handset/agenda*`；② 配对界面换设备令牌（裁定 68 之后这是进门唯一通道）；③ 出包。
   **现在挡在验收前面的两格**：桌面后端得开 LAN 绑定（2026-10-07 本机实测 `PLOBI_LAN` 未开、8787 无人监听、
   `devices.json = {}`），以及上面那条签名。
-- **测试没有可执行的入口**：`entry/src/test/` 下十个 `.test.ets` 都只写了 `export default function xxxTest()`，
-  **缺聚合用的 `List.test.ets`**；`entry/src/ohosTest/` 是空目录（构建日志：`not found resModel json file in
-  .../ohosTest/module.json5`），`entry/build-profile.json5` 也只声明了 `default` 与 `ohosTest` 两个 target。
-  所以「单测全绿」这句**从来没有证据**，新加的用例也一样没跑过——补这一格要在能真机/模拟器执行的前提下来，
-  别只把一个跑不通的聚合文件签进去当作完成。
+- **单测在 2026-10-10 第一次真跑起来了**（`WP-APP-CALENDAR` T0）。此前 `entry/src/test/` 十个 `.test.ets`
+  只有 `export default function xxxTest()`，**缺聚合入口 `List.test.ets`**，所以「单测全绿」从来没有证据。
+  本机可执行的命令（**不需要设备、不需要模拟器**）：
+  ```
+  "D:\Software\DevEco Studio\tools\hvigor\bin\hvigorw.js" --mode module -p module=entry@default -p isLocalTest=true test --no-daemon
+  ```
+  现核结果：**193 条用例，`result=Success` 193 条，非 Success 0 条**（逐条落在
+  `entry/.test/default/intermediates/test/coverage_data/test_result.txt`，该目录已进 `.gitignore`）。
+  第一次执行就抓出 **4 条从来没跑过的假绿转红**，全在 `ReminderCalculator`：
+  夹具把事件排在 60 秒后 ⇒ 它的 T−15 触发时刻已在过去 ⇒ `pickRemindersForEvents` 正确地筛掉了它，
+  **是期望写错、不是代码写错**；另有一条把 `droppedCount` 当成「总数−上限」，而它的语义是
+  **只算资格内被截断的**（`ReminderCalculator.ets:80-87`）。四条期望已改对，并**新增两条断言把这两个坑钉住**
+  （T−15 死区、`droppedCount` 语义）。
+  为证明新套件真被执行：故意把 `WeekView.test.ets` 一条期望改成 `'1970-01-01'` 重跑，
+  当场红 `Error in lays out seven ascending days`，随后撤掉探针跑回全绿。
+  ⚠️ 仍然没验的：**渲染效果**（没有证书、设备今天还没插上），别把「193 全绿」读成「App 过关」。
+- **`entry/src/ohosTest/` 依旧只有空目录**（没有 `module.json5`、没有 runner），仪器化测试那条路还没建；
+  本仓用的是本地单测档（`isLocalTest`）这条路。
 - 本机命令入口（这套路径只在 `Cycle` 上成立）：
   `node "D:\Software\DevEco Studio\tools\hvigor\bin\hvigorw.js" assembleHap --mode module -p product=default`，
   环境变量 `DEVECO_SDK_HOME=D:\Software\DevEco Studio\sdk`。
