@@ -169,3 +169,26 @@ export function buildWeekColumns(events: AgendaEvent[], todayIso: string): WeekB
   const anchor: string = todayIso.length > 0 ? todayIso : localDateIso(new Date());
   return bucketWeek(events, mondayOfLocalDay(anchor), anchor);
 }
+
+/**
+ * 周列表取数的左界：`YYYY-MM-DD` → `YYYY-MM-DDT00:00:00`；带时刻的原样返回（幂等）。
+ */
+export function dayStartBound(dayIso: string): string {
+  return DAY_ISO_RE.test(dayIso) ? dayIso + 'T00:00:00' : dayIso;
+}
+
+/**
+ * 周列表取数的右界：`YYYY-MM-DD` → `YYYY-MM-DDT23:59:59`；带时刻的原样返回（幂等）。
+ *
+ * **为什么必须有这一条（2026-10-14 实测，不是推断）**：后端 `to` 是**闭区间的时刻端点**，
+ * `normalize_dt('2026-10-11')` 把它解析成 `2026-10-11T00:00:00`（`Code/plobi/agenda/store.py:193`），
+ * 于是 `to=<周日裸日期>` 会把周日整天的事件全滤掉——8 条里丢 2 条（都是周日的），
+ * 而同一周 7 次 `/api/handset/agenda/day` 单日快照一条不少。
+ * 症状正好打在 WP-APP-DAY-SINK 的判据反面：**周视图那一列是空的，点进那一天却有内容**。
+ * 右界补成日末后两边逐条对齐（周列表 8 条 = 7 份单日快照的并集 8 条）。
+ *
+ * 单日快照走的是另一套口径（`?date=YYYY-MM-DD`，后端自己补日界），与本函数不混用。
+ */
+export function dayEndBound(dayIso: string): string {
+  return DAY_ISO_RE.test(dayIso) ? dayIso + 'T23:59:59' : dayIso;
+}

@@ -1,6 +1,7 @@
 import { http } from '@kit.NetworkKit';
 import { AgendaEvent, DayPayload } from '../model/AgendaEvent';
 import { ApiResult, doRequest } from './HttpKit';
+import { dayEndBound, dayStartBound } from './WeekView';
 
 /**
  * 日程客户端：读接口走设备面前缀 /api/handset/agenda*；令牌为设置页配对得到的设备令牌。
@@ -23,8 +24,10 @@ export function fetchAgenda(
   toIso: string,
 ): Promise<ApiResult<AgendaEvent[]>> {
   const q: Record<string, string> = {
-    'from': fromIso,
-    'to': toIso,
+    // 后端 to 是时刻端点：裸日期会漏掉最后一整天（2026-10-14 实测丢周日 2 条），
+    // 所以两端都补成日界——纯函数与用例在 service/WeekView.ets。
+    'from': dayStartBound(fromIso),
+    'to': dayEndBound(toIso),
   };
   return doRequest<AgendaEvent[]>(baseUrl, token, http.RequestMethod.GET, '/api/handset/agenda', q);
 }

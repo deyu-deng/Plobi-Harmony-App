@@ -7,6 +7,8 @@ import {
   bucketWeek,
   buildWeekColumns,
   dayFromLocalIso,
+  dayEndBound,
+  dayStartBound,
   mondayOfLocalDay,
   weekDaysFromMonday,
 } from '../main/ets/service/WeekView';
@@ -209,6 +211,25 @@ export default function weekViewTest(): void {
         }
       }
       expect(todayFound).assertEqual(1);
+    });
+
+    it('dayStartBound pads a bare date to the local day start', 0, (): void => {
+      expect(dayStartBound('2026-10-05')).assertEqual('2026-10-05T00:00:00');
+    });
+
+    it('dayEndBound pads a bare date to the last instant of that day', 0, (): void => {
+      // 后端把裸日期 to 当 00:00:00（实测丢过周日整天两条），右界必须补到日末。
+      expect(dayEndBound('2026-10-11')).assertEqual('2026-10-11T23:59:59');
+    });
+
+    it('both bounds are idempotent on values that already carry a time', 0, (): void => {
+      expect(dayStartBound('2026-10-05T08:30:00')).assertEqual('2026-10-05T08:30:00');
+      expect(dayEndBound('2026-10-11T23:59:59')).assertEqual('2026-10-11T23:59:59');
+    });
+
+    it('bounds pass garbage through instead of guessing', 0, (): void => {
+      expect(dayStartBound('')).assertEqual('');
+      expect(dayEndBound('not-a-date')).assertEqual('not-a-date');
     });
   });
 }
